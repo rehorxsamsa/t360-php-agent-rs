@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Redakční systém, který napsali agenti — tutoriál</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=JetBrains+Mono:wght@400;600&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&display=swap" rel="stylesheet">
+<!--
+  Tutoriál spravuje agent `technicky-spisovatel` podle skillu `tutorial-kapitola`.
+  Měnit smí jen místa označená komentářem „AGENT:“ a kapitoly zadané vedoucím týmu.
+  Kapitola 16 „Nasazení na VPS Debian“ je obsahově zamčená (napsal ji lektor).
+-->
+<style>
+:root{
+  --papir:#F5F7FA; --plocha:#FFFFFF; --inkoust:#182030; --tlumena:#5F6B7D;
+  --linka:#D6DCE5; --azur:#0B7A99; --magenta:#B8326E; --kod-pozadi:#EEF2F6;
+  --serif:"Literata", Georgia, "Times New Roman", serif;
+  --grotesk:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --papir:#121823; --plocha:#18202D; --inkoust:#E4E9F1; --tlumena:#9AA6B8;
+    --linka:#2B3546; --azur:#4CC3E0; --magenta:#F07AAE; --kod-pozadi:#1D2736;
+  }
+}
+:root[data-theme="dark"]{
+  --papir:#121823; --plocha:#18202D; --inkoust:#E4E9F1; --tlumena:#9AA6B8;
+  --linka:#2B3546; --azur:#4CC3E0; --magenta:#F07AAE; --kod-pozadi:#1D2736;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:calc(env(safe-area-inset-top,0px) + 1rem);scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--papir);color:var(--inkoust);font:1.0625rem/1.7 var(--serif);
+  -webkit-font-smoothing:antialiased}
+a{color:var(--azur);text-underline-offset:.18em}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--magenta);outline-offset:3px}
+.rozvrzeni{display:grid;grid-template-columns:minmax(15rem,18rem) minmax(0,1fr);max-width:78rem;margin:0 auto}
+nav.obsah{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;height:100vh;overflow-y:auto;
+  padding:2rem 1.25rem 3rem 1.5rem;border-right:1px solid var(--linka);font:0.92rem/1.45 var(--grotesk)}
+nav.obsah p.znacka{font-weight:700;font-size:1.05rem;margin:0 0 1.25rem}
+nav.obsah ol{list-style:none;margin:0;padding:0;counter-reset:kap}
+nav.obsah li{counter-increment:kap;margin:.15rem 0}
+nav.obsah li a{display:grid;grid-template-columns:2rem 1fr;color:var(--inkoust);text-decoration:none;padding:.3rem .4rem;border-radius:4px}
+nav.obsah li a::before{content:counter(kap);color:var(--tlumena);font-variant-numeric:tabular-nums}
+nav.obsah li a:hover{background:var(--kod-pozadi)}
+nav.obsah li.zamceno a::after{content:"hotovo";grid-column:2;font-size:.75rem;color:var(--magenta)}
+nav.obsah .skupina{margin:1.1rem 0 .3rem .4rem;color:var(--tlumena);font-size:.8rem}
+button.motiv{margin-top:1.5rem;font:inherit;font-size:.85rem;background:none;border:1px solid var(--linka);
+  color:var(--inkoust);padding:.35rem .7rem;border-radius:4px;cursor:pointer}
+main{padding:3rem clamp(1.25rem,5vw,4.5rem) 6rem;min-width:0}
+header.uvod{max-width:44rem;margin-bottom:3.5rem}
+header.uvod h1{font:700 clamp(2.2rem,5vw,3.4rem)/1.05 var(--grotesk);letter-spacing:-.02em;margin:0 0 1rem}
+header.uvod p{font-size:1.15rem;color:var(--tlumena);margin:0}
+section.kapitola{max-width:44rem;margin:0 0 4.5rem;position:relative}
+section.kapitola > h2{font:700 1.9rem/1.2 var(--grotesk);letter-spacing:-.01em;margin:0 0 .75rem;position:relative}
+/* korektorská značka v okraji – jediný výrazný prvek stránky */
+section.kapitola > h2::before{content:"¶";position:absolute;left:-2.1rem;top:.05em;color:var(--magenta);
+  font:400 1.9rem/1 var(--serif)}
+h3{font:600 1.2rem/1.3 var(--grotesk);margin:2.2rem 0 .5rem}
+h4{font:600 1rem/1.3 var(--grotesk);margin:1.6rem 0 .4rem}
+p,li{max-width:68ch}
+code{font:0.88em var(--mono);background:var(--kod-pozadi);padding:.1em .35em;border-radius:3px}
+pre{font:0.85rem/1.55 var(--mono);background:var(--kod-pozadi);padding:1rem 1.15rem;border-radius:6px;
+  overflow-x:auto;border:1px solid var(--linka)}
+pre code{background:none;padding:0}
+pre.mermaid{background:var(--plocha);text-align:center}
+.tabulka{overflow-x:auto;margin:1rem 0}
+table{border-collapse:collapse;font:0.92rem/1.45 var(--grotesk);min-width:100%}
+th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--linka);vertical-align:top}
+th{font-weight:600;color:var(--tlumena)}
+aside.korektura{border-left:3px solid var(--magenta);padding:.2rem 0 .2rem 1rem;margin:1.5rem 0;color:var(--inkoust)}
+aside.korektura strong{color:var(--magenta);font-family:var(--grotesk)}
+aside.tip{border-left:3px solid var(--azur);padding:.2rem 0 .2rem 1rem;margin:1.5rem 0}
+.zastupny{border:1px dashed var(--linka);border-radius:6px;padding:1rem 1.2rem;color:var(--tlumena);font-style:italic}
+details{margin:1rem 0;border:1px solid var(--linka);border-radius:6px;padding:.6rem 1rem;background:var(--plocha)}
+details > summary{cursor:pointer;font:600 1rem var(--grotesk)}
+details details{margin:.5rem 0 0;background:var(--papir)}
+dl.slovnicek dt{font:600 1rem var(--grotesk);margin-top:1rem}
+dl.slovnicek dd{margin:.2rem 0 0 0}
+ol.kroky{padding-left:1.4rem} ol.kroky > li{margin:.4rem 0}
+@media (max-width: 860px){
+  .rozvrzeni{grid-template-columns:1fr}
+  nav.obsah{position:static;height:auto;border-right:0;border-bottom:1px solid var(--linka)}
+  section.kapitola > h2::before{position:static;margin-right:.4rem}
+}
+@media print{nav.obsah,button.motiv{display:none}.rozvrzeni{display:block}}
+</style>
+</head>
+<body>
+<div class="rozvrzeni">
+<nav class="obsah" aria-label="Obsah tutoriálu">
+  <p class="znacka">Redakční systém</p>
+  <ol>
+    <li><a href="#jak-cist">Jak číst tento tutoriál</a></li>
+    <li><a href="#tym">Tým agentů a jak pracuje</a></li>
+    <li><a href="#spusteni">Spuštění na svém počítači</a></li>
+    <li><a href="#architektura">Architektura aplikace</a></li>
+    <li><a href="#bezpecnost">Bezpečnost v kódu</a></li>
+    <li><a href="#ai-01">AI 01 · Perex na jedno kliknutí</a></li>
+    <li><a href="#ai-02">AI 02 · SEO titulek a meta popis</a></li>
+    <li><a href="#ai-03">AI 03 · Štítky a rubrika</a></li>
+    <li><a href="#ai-04">AI 04 · Kontrola před publikací</a></li>
+    <li><a href="#ai-05">AI 05 · Překlad článku</a></li>
+    <li><a href="#ai-06">AI 06 · Asistent psaní (streaming)</a></li>
+    <li><a href="#ai-07">AI 07 · Zeptej se redakce (tool use)</a></li>
+    <li><a href="#ai-08">AI 08 · Sémantické vyhledávání (RAG)</a></li>
+    <li><a href="#ai-09">AI 09 · AI redaktor s člověkem ve smyčce</a></li>
+    <li><a href="#ai-10">AI 10 · MCP server redakce</a></li>
+    <li class="zamceno"><a href="#nasazeni">Nasazení na VPS Debian</a></li>
+    <li><a href="#slovnicek">Slovníček</a></li>
+  </ol>
+  <button class="motiv" type="button" id="prepinac-motivu">Přepnout světlý / tmavý</button>
+</nav>
+
+<main>
+<header class="uvod">
+  <h1>Redakční systém, který napsali agenti</h1>
+  <p>Čisté PHP 8.4, MariaDB a Docker. Deset praktických AI funkcí. Celou aplikaci naprogramoval
+  tým agentů v Claude Code — člověk jen zadával a schvaloval. Tento návod ukazuje obojí:
+  co aplikace dělá a jak vznikla.</p>
+</header>
+
+<section class="kapitola" id="jak-cist">
+  <h2>Jak číst tento tutoriál</h2>
+  <p>Každá kapitola s AI příkladem má stejnou stavbu: co postavíme, jak to funguje, kód krok za
+  krokem, jak to spustit, kolik to stojí, na co si dát pozor a jak to postavili agenti.
+  Na konci je krátký kvíz s odpověďmi schovanými pod rozbalovacím prvkem.</p>
+  <p>Všechny příklady běží i bez API klíče. V režimu <code>AI_PROVIDER=falesny</code> vrací
+  aplikace předem připravené odpovědi, takže si můžeš projít celý tok dat zdarma a pak teprve
+  přepnout na skutečný model.</p>
+  <!-- AGENT: technicky-spisovatel doplní odkaz na README a seznam předpokladů -->
+</section>
+
+<section class="kapitola" id="tym">
+  <h2>Tým agentů a jak pracuje</h2>
+  <p>Hlavní relace Claude Code hraje vedoucího týmu. Sama skoro neprogramuje: rozkládá zadání,
+  deleguje práci specializovaným subagentům a zastaví se vždy, když je potřeba rozhodnutí člověka.</p>
+  <pre class="mermaid">
+flowchart LR
+  C([Člověk: požadavek]) --> A[architekt<br/>plán + kritéria]
+  A --> B1{{Brána 1<br/>schválení plánu}}
+  B1 --> T[tester<br/>testy napřed]
+  B1 --> D[databazista<br/>migrace]
+  T --> P[programator / ai-inzenyr<br/>implementace]
+  D --> P
+  P --> V[tester<br/>make qa + E2E]
+  V -- chyba --> P
+  V --> S[security-reviewer<br/>revize diffu]
+  S -- VRÁTIT --> P
+  S --> W[technicky-spisovatel<br/>tutoriál]
+  W --> B2{{Brána 2<br/>schválení výsledku}}
+  B2 --> G[/commit do main/]
+  G --> H([Člověk: push a nasazení])
+  </pre>
+  <h3>Kdo je v týmu</h3>
+  <div class="tabulka"><table>
+    <thead><tr><th>Agent</th><th>Model</th><th>Smí</th><th>Nesmí</th></tr></thead>
+    <tbody>
+      <tr><td>architekt</td><td>opus</td><td>psát plány a ADR do <code>docs/</code></td><td>psát kód</td></tr>
+      <tr><td>tester</td><td>sonnet</td><td>psát a spouštět testy, ovládat prohlížeč (Playwright MCP)</td><td>„opravit“ test, aby prošel špatný kód</td></tr>
+      <tr><td>databazista</td><td>sonnet</td><td>psát migrace, číst DB přes MCP</td><td>zapisovat do DB přímým SQL</td></tr>
+      <tr><td>programator</td><td>sonnet</td><td>implementovat podle plánu</td><td>skončit s červenými testy, měnit CI</td></tr>
+      <tr><td>ai-inzenyr</td><td>sonnet</td><td>AI funkce za rozhraním <code>LlmKlient</code></td><td>dát modelu nástroje se zápisem</td></tr>
+      <tr><td>security-reviewer</td><td>opus</td><td>číst a hlásit nálezy</td><td>upravovat soubory</td></tr>
+      <tr><td>devops</td><td>sonnet</td><td>Docker, CI, deploy workflow</td><td>pushovat, připojit se k VPS</td></tr>
+      <tr><td>technicky-spisovatel</td><td>sonnet</td><td>tento tutoriál a README</td><td>měnit kapitolu o nasazení</td></tr>
+    </tbody>
+  </table></div>
+  <aside class="korektura"><strong>Prompt je prosba, hook je zákon.</strong> Že agent nesmí
+  pushovat, stojí v jeho promptu, ale skutečně to zajišťuje pravidlo <code>deny</code> v
+  <code>.claude/settings.json</code> a hook <code>bash-strazce.sh</code>. Model se může splést;
+  skript ne.</aside>
+  <!-- AGENT: technicky-spisovatel doplní skutečné ukázky ze stavby (plán, report, zachycený hook) -->
+</section>
+
+<section class="kapitola" id="spusteni">
+  <h2>Spuštění na svém počítači</h2>
+  <div class="zastupny">Doplní agent technicky-spisovatel po milníku M1: <code>make up</code>,
+  <code>.env</code>, první migrace, vytvoření admina, adresa aplikace.</div>
+  <!-- AGENT: kapitola spuštění -->
+</section>
+
+<section class="kapitola" id="architektura">
+  <h2>Architektura aplikace</h2>
+  <div class="zastupny">Doplní agent podle <code>docs/architektura.md</code> po milníku M2.</div>
+  <!-- AGENT: kapitola architektura -->
+</section>
+
+<section class="kapitola" id="bezpecnost">
+  <h2>Bezpečnost v kódu</h2>
+  <div class="zastupny">Doplní agent po milníku M3: přihlášení, role admin, CSRF, CSP s nonce,
+  session, brute force, audit log — vždy se skutečným kódem z repozitáře.</div>
+  <!-- AGENT: kapitola bezpečnost -->
+</section>
+
+<section class="kapitola" id="ai-01"><h2>AI 01 · Perex na jedno kliknutí</h2>
+  <p class="cil">První volání Claude API z čistého PHP: systémový prompt, limit tokenů a cena jednoho volání.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 01 (milník M6).</div><!-- AGENT: ai-01 --></section>
+<section class="kapitola" id="ai-02"><h2>AI 02 · SEO titulek a meta popis</h2>
+  <p class="cil">Strukturovaný výstup ve formátu JSON, validace schématu a opakování při chybě.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 02.</div><!-- AGENT: ai-02 --></section>
+<section class="kapitola" id="ai-03"><h2>AI 03 · Štítky a rubrika</h2>
+  <p class="cil">Klasifikace levným modelem, výčet povolených hodnot a prompt caching.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 03.</div><!-- AGENT: ai-03 --></section>
+<section class="kapitola" id="ai-04"><h2>AI 04 · Kontrola před publikací</h2>
+  <p class="cil">Hledání osobních údajů a rizik v textu a živá ukázka útoku prompt injection i obrany.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 04.</div><!-- AGENT: ai-04 --></section>
+<section class="kapitola" id="ai-05"><h2>AI 05 · Překlad článku</h2>
+  <p class="cil">Překlad se zachováním Markdownu a srovnání modelů podle kvality a ceny.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 05.</div><!-- AGENT: ai-05 --></section>
+<section class="kapitola" id="ai-06"><h2>AI 06 · Asistent psaní (streaming)</h2>
+  <p class="cil">Odpověď modelu se v editoru objevuje průběžně — server-sent events v PHP i v prohlížeči.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 06 (milník M7).</div><!-- AGENT: ai-06 --></section>
+<section class="kapitola" id="ai-07"><h2>AI 07 · Zeptej se redakce (tool use)</h2>
+  <p class="cil">Model sám volá čtecí nástroje nad články; agentní smyčka s limitem kroků.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 07.</div><!-- AGENT: ai-07 --></section>
+<section class="kapitola" id="ai-08"><h2>AI 08 · Sémantické vyhledávání (RAG)</h2>
+  <p class="cil">Embeddingy článků ve vektorovém sloupci MariaDB a odpověď s citacemi zdrojů.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 08.</div><!-- AGENT: ai-08 --></section>
+<section class="kapitola" id="ai-09"><h2>AI 09 · AI redaktor s člověkem ve smyčce</h2>
+  <p class="cil">Osnova, koncept, sebekontrola — a publikovat smí jen admin.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 09.</div><!-- AGENT: ai-09 --></section>
+<section class="kapitola" id="ai-10"><h2>AI 10 · MCP server redakce</h2>
+  <p class="cil">Redakční systém jako nástroj pro další agenty přes Model Context Protocol.</p>
+  <div class="zastupny">Kapitola vznikne s příkladem 10.</div><!-- AGENT: ai-10 --></section>
+
+<!-- ===================== ZAMČENO: obsah píše lektor, agent smí jen opravit názvy souborů ===================== -->
+<section class="kapitola" id="nasazeni">
+  <h2>Nasazení na VPS Debian</h2>
+  <p>Agenti skončí commitem do lokální větve <code>main</code>. Odtud přebíráš ty: push na GitHub,
+  kontrola v CI, tvé schválení a nasazení na server. Agenti k serveru, SSH klíči ani produkčním
+  heslům nikdy přístup nemají — a v této kapitole uvidíš proč a jak to zařídit.</p>
+
+  <h3>Jak nasazení probíhá</h3>
+  <pre class="mermaid">
+sequenceDiagram
+  participant Ty
+  participant GH as GitHub Actions
+  participant R as GHCR (registr obrazů)
+  participant V as VPS Debian
+  Ty->>GH: git push origin main
+  GH->>GH: CI – kvalita, testy, tajemství
+  GH->>R: build + push obrazů app a web (tag sha-xxxxxxx)
+  GH-->>Ty: Deploy čeká na schválení (environment production)
+  Ty->>GH: Approve
+  GH->>V: scp compose.prod.yaml + nasad.sh, ssh ./nasad.sh
+  V->>R: docker compose pull
+  V->>V: up, migrace, kontrola /zdravi
+  V-->>GH: OK, nebo automatický návrat na předchozí tag
+  </pre>
+  <aside class="tip">Názvy souborů, secrets i cest v této kapitole jsou závazné — definuje je skill
+  <code>.claude/skills/devops-kontrakt/SKILL.md</code>, podle kterého agent <code>devops</code>
+  napsal <code>ci.yml</code>, <code>deploy.yml</code> a <code>scripts/vps/nasad.sh</code>.</aside>
+
+  <h3>Krok 1 — Připrav server</h3>
+  <p>Přihlas se na VPS jako uživatel se sudo (nebo root) a připrav samostatného uživatele
+  <code>deploy</code>, pod kterým poběží nasazení.</p>
+<pre><code>sudo apt update &amp;&amp; sudo apt full-upgrade -y
+sudo adduser --disabled-password --gecos "" deploy
+
+# Docker Engine z oficiálního repozitáře Dockeru (Debian 13 „trixie“)
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/debian $(. /etc/os-release &amp;&amp; echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker deploy
+docker --version &amp;&amp; docker compose version</code></pre>
+  <aside class="korektura"><strong>Skupina docker = práva roota.</strong> Kdo je ve skupině
+  <code>docker</code>, ovládne celý server. Proto má nasazení vlastního uživatele s vlastním klíčem,
+  který nepoužíváš k ničemu jinému, a proto ho agenti nikdy nedostanou.</aside>
+  <p>Server se 4 GB RAM bez swapu může při buildu nebo zátěži MariaDB narazit na nedostatek paměti.
+  Přidej malý swap:</p>
+<pre><code>sudo fallocate -l 2G /swapfile &amp;&amp; sudo chmod 600 /swapfile
+sudo mkswap /swapfile &amp;&amp; sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab</code></pre>
+
+  <h3>Krok 2 — Adresář aplikace a produkční tajemství</h3>
+  <p>Tajemství aplikace (hesla k databázi, API klíč) žijí <strong>jen na serveru</strong> v souboru
+  <code>/opt/redakce/.env</code>. Nejsou v gitu, v obrazu ani v GitHubu.</p>
+<pre><code>sudo mkdir -p /opt/redakce/zalohy
+sudo chown -R deploy:deploy /opt/redakce
+sudo -iu deploy
+cd /opt/redakce
+# Vzor zkopíruj z .env.example v repozitáři (sekce PRODUKCE), pak doplň hodnoty:
+nano .env
+chmod 600 .env
+# silná hesla vygeneruješ takto:
+openssl rand -base64 32</code></pre>
+  <p>Typicky vyplníš (přesný seznam je v <code>.env.example</code>, který napsal agent devops):</p>
+  <div class="tabulka"><table>
+    <thead><tr><th>Proměnná</th><th>Příklad / poznámka</th></tr></thead>
+    <tbody>
+      <tr><td><code>APP_ENV</code>, <code>APP_DEBUG</code></td><td><code>prod</code>, <code>0</code> — nikdy debug v produkci</td></tr>
+      <tr><td><code>APP_URL</code></td><td><code>https://redakce.tvoje-domena.cz</code></td></tr>
+      <tr><td><code>IMAGE_OWNER</code></td><td>tvůj GitHub login malými písmeny (část názvu obrazu v GHCR)</td></tr>
+      <tr><td><code>MARIADB_ROOT_PASSWORD</code>, <code>DB_PASSWORD</code>, <code>DB_MIGRACE_PASSWORD</code>, <code>DB_READONLY_PASSWORD</code></td><td>čtyři různá vygenerovaná hesla</td></tr>
+      <tr><td><code>AI_PROVIDER</code>, <code>ANTHROPIC_API_KEY</code></td><td><code>anthropic</code> a klíč z console.anthropic.com, nebo <code>falesny</code> bez klíče</td></tr>
+      <tr><td><code>AI_DENNI_LIMIT_TOKENU</code></td><td>pojistka proti nečekané útratě, např. <code>200000</code></td></tr>
+      <tr><td><code>WEB_PORT</code></td><td><code>8085</code> — aplikace naslouchá jen na 127.0.0.1</td></tr>
+      <tr><td><code>TRUSTED_PROXIES</code></td><td>adresa reverzní proxy (viz krok 6)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Krok 3 — Aby server mohl stáhnout obrazy z GHCR</h3>
+  <p>CI nahrává obrazy do GitHub Container Registry. Máš dvě možnosti:</p>
+  <ol class="kroky">
+    <li><strong>Veřejné balíčky:</strong> na GitHubu otevři Packages → <code>redakcni-system-app</code>
+    a <code>redakcni-system-web</code> → Package settings → Change visibility → Public. Obrazy neobsahují
+    tajemství, takže je to bezpečné a nejjednodušší.</li>
+    <li><strong>Soukromé balíčky:</strong> vytvoř <em>classic</em> Personal Access Token jen s právem
+    <code>read:packages</code> (GitHub Packages fine-grained tokeny nepodporují) a na serveru se přihlas:
+<pre><code>sudo -iu deploy
+echo "TVUJ_TOKEN" | docker login ghcr.io -u TVUJ_LOGIN --password-stdin</code></pre></li>
+  </ol>
+
+  <h3>Krok 4 — Nasazovací SSH klíč</h3>
+  <p>Na <strong>svém počítači</strong> (ne na serveru) vytvoř klíč určený jen pro GitHub Actions:</p>
+<pre><code>ssh-keygen -t ed25519 -f ~/.ssh/redakce_deploy -N "" -C "github-actions-redakce"
+ssh-copy-id -i ~/.ssh/redakce_deploy.pub -p 22 deploy@IP_VPS
+ssh -i ~/.ssh/redakce_deploy -p 22 deploy@IP_VPS 'docker ps'   # test
+
+# Otisk serveru pro GitHub (ochrana proti podvržení serveru):
+ssh-keyscan -p 22 IP_VPS 2&gt;/dev/null &gt; /tmp/redakce_known_hosts
+ssh-keygen -lf /tmp/redakce_known_hosts</code></pre>
+  <p>Otisk z posledního příkazu porovnej s otiskem přímo na serveru
+  (<code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>). Musí se shodovat — jinak by se
+  GitHub mohl připojovat k cizímu stroji.</p>
+  <aside class="korektura"><strong>Používáš jiný SSH port?</strong> Pak ho dosaď místo 22 ve všech
+  příkazech i do secretu <code>VPS_PORT</code>. Pokud máš na serveru zakázané přihlášení heslem
+  (doporučeno), zkontroluj, že uživatel <code>deploy</code> je povolený v <code>AllowUsers</code>.</aside>
+
+  <h3>Krok 5 — GitHub: environment production a secrets</h3>
+  <p>Environment je místo, kde GitHub drží tajemství pro nasazení <em>a</em> kde vynutí tvé ruční
+  schválení. Tady je ta druhá brána mimo Claude Code.</p>
+  <ol class="kroky">
+    <li>Na GitHubu: <strong>Settings → Environments → New environment</strong> → název
+    <code>production</code>.</li>
+    <li>Zapni <strong>Required reviewers</strong> a přidej sebe. Do <strong>Deployment branches</strong>
+    dej jen <code>main</code>.</li>
+    <li><strong>Settings → Actions → General → Workflow permissions</strong>: nech výchozí
+    <em>Read repository contents</em>; potřebná práva si workflow vyžádá samo (<code>packages: write</code>).</li>
+    <li>Vlož secrets do environmentu (z kořene repozitáře na svém počítači):</li>
+  </ol>
+<pre><code>gh secret set VPS_HOST        --env production --body "IP_VPS"
+gh secret set VPS_PORT        --env production --body "22"
+gh secret set VPS_USER        --env production --body "deploy"
+gh secret set VPS_SSH_KEY     --env production &lt; ~/.ssh/redakce_deploy
+gh secret set VPS_KNOWN_HOSTS --env production &lt; /tmp/redakce_known_hosts
+gh secret list --env production</code></pre>
+  <div class="tabulka"><table>
+    <thead><tr><th>Secret</th><th>Co obsahuje</th><th>Kde vzniká</th></tr></thead>
+    <tbody>
+      <tr><td><code>VPS_HOST</code></td><td>IP adresa nebo hostname serveru</td><td>poskytovatel VPS</td></tr>
+      <tr><td><code>VPS_PORT</code></td><td>SSH port</td><td><code>/etc/ssh/sshd_config</code></td></tr>
+      <tr><td><code>VPS_USER</code></td><td><code>deploy</code></td><td>krok 1</td></tr>
+      <tr><td><code>VPS_SSH_KEY</code></td><td>privátní ed25519 klíč</td><td>krok 4</td></tr>
+      <tr><td><code>VPS_KNOWN_HOSTS</code></td><td>výstup <code>ssh-keyscan</code></td><td>krok 4</td></tr>
+    </tbody>
+  </table></div>
+  <p>Obrazy do GHCR nahrává workflow vestavěným tokenem <code>GITHUB_TOKEN</code> — pro to žádný
+  secret zakládat nemusíš.</p>
+
+  <h3>Krok 6 — Reverzní proxy a HTTPS</h3>
+  <p>Aplikace naslouchá jen na <code>127.0.0.1:8085</code>, ne do internetu. Před ni postav proxy
+  s TLS. Vyber variantu podle toho, co už na serveru běží.</p>
+  <h4>Varianta A: čistý server (porty 80 a 443 jsou volné)</h4>
+<pre><code># do /opt/redakce/.env přidej:
+COMPOSE_PROFILES=caddy
+DOMENA=redakce.tvoje-domena.cz
+# u registrátora domény: záznam A redakce → IP_VPS
+sudo ufw allow 80/tcp &amp;&amp; sudo ufw allow 443/tcp</code></pre>
+  <p>Caddy si certifikát Let's Encrypt vyřídí sám při prvním startu.</p>
+  <h4>Varianta B: na serveru běží Apache, například s panelem ISPConfig</h4>
+  <p>Porty 80 a 443 obsluhuje Apache, takže aplikaci zpřístupníš přes něj:</p>
+  <ol class="kroky">
+    <li>V ISPConfigu vytvoř web <code>redakce.tvoje-domena.cz</code> se zapnutým SSL a Let's Encrypt.</li>
+    <li>Na serveru zapni proxy moduly: <code>sudo a2enmod proxy proxy_http headers &amp;&amp; sudo systemctl reload apache2</code></li>
+    <li>V nastavení webu → <em>Options → Apache Directives</em> vlož:
+<pre><code>ProxyPreserveHost On
+ProxyPass        / http://127.0.0.1:8085/
+ProxyPassReverse / http://127.0.0.1:8085/
+RequestHeader set X-Forwarded-Proto "https"</code></pre></li>
+    <li>Do <code>.env</code> nastav <code>TRUSTED_PROXIES</code> na bránu docker sítě aplikace
+    (zjistíš ji po prvním startu: <code>docker network inspect redakce_default | grep Gateway</code>),
+    aby aplikace věřila hlavičce <code>X-Forwarded-Proto</code> jen od proxy.</li>
+  </ol>
+  <aside class="korektura"><strong>Docker obchází ufw.</strong> Port publikovaný jako
+  <code>8085:80</code> by byl dostupný z internetu i přes zapnutý firewall, protože Docker
+  zapisuje vlastní pravidla iptables. Proto kontrakt publikuje <code>127.0.0.1:8085:80</code>
+  a databázi nepublikuje vůbec. Ověříš to příkazem <code>sudo ss -tlnp | grep 8085</code> —
+  musí ukazovat <code>127.0.0.1</code>.</aside>
+
+  <h3>Krok 7 — První nasazení</h3>
+<pre><code># na svém počítači
+git push -u origin main
+gh run watch          # sleduj CI</code></pre>
+  <ol class="kroky">
+    <li>Po zeleném CI se spustí workflow <strong>Deploy</strong> a zastaví se na <em>Waiting</em>.</li>
+    <li>Otevři ho v záložce Actions → <strong>Review deployments</strong> → zaškrtni
+    <code>production</code> → <strong>Approve and deploy</strong>.</li>
+    <li>Po dokončení vytvoř na serveru administrátora (heslo zadáš interaktivně):</li>
+  </ol>
+<pre><code>sudo -iu deploy
+cd /opt/redakce
+docker compose -f compose.prod.yaml ps
+docker compose -f compose.prod.yaml exec app php bin/konzole admin:vytvor</code></pre>
+
+  <h3>Krok 8 — Ověř, že je vše v pořádku</h3>
+<pre><code>curl -fsS https://redakce.tvoje-domena.cz/zdravi
+# {"stav":"ok","db":"ok"}
+curl -sI https://redakce.tvoje-domena.cz/ | grep -Ei 'content-security|strict-transport|x-content-type'
+curl -s -o /dev/null -w '%{http_code}\n' https://redakce.tvoje-domena.cz/admin   # 302 na přihlášení</code></pre>
+
+  <h3>Návrat k předchozí verzi</h3>
+  <p>Skript <code>nasad.sh</code> se při neúspěšné kontrole zdraví vrátí sám. Ručně můžeš
+  dvěma způsoby:</p>
+<pre><code># a) z GitHubu: Actions → Deploy → Run workflow → tag: sha-1a2b3c4
+# b) přímo na serveru:
+cd /opt/redakce &amp;&amp; IMAGE_TAG=$(cat .image_tag_predchozi) ./nasad.sh</code></pre>
+  <p>Pozor: návrat kódu nevrací migrace databáze. Proto agenti píší migrace tak, aby nová verze
+  schématu fungovala i se starší verzí kódu (nejdřív přidat, mazat až v dalším vydání).</p>
+
+  <h3>Zálohy databáze</h3>
+<pre><code>sudo -iu deploy
+crontab -e
+# denně ve 3:00, uchovat 14 dní:
+0 3 * * * cd /opt/redakce &amp;&amp; docker compose -f compose.prod.yaml exec -T db sh -c 'mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" --single-transaction redakce' | gzip &gt; /opt/redakce/zalohy/redakce-$(date +\%F).sql.gz &amp;&amp; find /opt/redakce/zalohy -name '*.sql.gz' -mtime +14 -delete</code></pre>
+  <p>Obnovu si jednou za čas vyzkoušej — záloha, kterou jsi nikdy neobnovil, je jen naděje.</p>
+
+  <h3>Kontrolní seznam před prvním deployem</h3>
+  <ul>
+    <li>CI na <code>main</code> je zelené, včetně jobu <code>tajemstvi</code> a skenu obrazů.</li>
+    <li><code>/opt/redakce/.env</code> existuje, má práva <code>600</code> a <code>APP_DEBUG=0</code>.</li>
+    <li>Environment <code>production</code> má required reviewers a 5 secrets.</li>
+    <li>Otisk serveru v <code>VPS_KNOWN_HOSTS</code> jsi porovnal ručně.</li>
+    <li>Port aplikace naslouchá jen na <code>127.0.0.1</code>, databáze nemá publikovaný port.</li>
+    <li>Na API klíči Anthropic máš nastavený měsíční limit útraty v konzoli a v <code>.env</code> denní limit tokenů.</li>
+  </ul>
+
+  <details class="kviz"><summary>Kvíz (3 otázky)</summary>
+    <p><strong>1.</strong> Proč produkční hesla nejsou v GitHub secrets, ale jen na serveru?</p>
+    <details><summary>Odpověď</summary><p>GitHub je potřebuje jen k tomu, aby se dostal na server.
+    Čím méně míst tajemství zná, tím menší je dopad úniku. Aplikace si hesla čte přímo na serveru.</p></details>
+    <p><strong>2.</strong> K čemu je environment <code>production</code> s required reviewers?</p>
+    <details><summary>Odpověď</summary><p>Je to schvalovací brána mimo agenty i mimo tvůj počítač:
+    nic se nenasadí, dokud v GitHubu výslovně neklikneš na schválení.</p></details>
+    <p><strong>3.</strong> Proč se port aplikace publikuje jako <code>127.0.0.1:8085</code>?</p>
+    <details><summary>Odpověď</summary><p>Docker by jinak port otevřel do internetu i přes zapnutý
+    ufw. Takto je dostupný jen pro reverzní proxy na stejném stroji.</p></details>
+  </details>
+</section>
+<!-- ===================== KONEC ZAMČENÉ KAPITOLY ===================== -->
+
+<section class="kapitola" id="slovnicek">
+  <h2>Slovníček</h2>
+  <dl class="slovnicek">
+    <dt>Agent / subagent</dt><dd>Model s vlastním zadáním, nástroji a kontextem. Subagenta spouští hlavní relace pro dílčí úkol a dostane od něj jen souhrn.</dd>
+    <dt>Skill</dt><dd>Složka se <code>SKILL.md</code>: postup nebo znalost, kterou si agent načte, až ji potřebuje, nebo ji spustíš příkazem (<code>/feature</code>).</dd>
+    <dt>Hook</dt><dd>Skript, který Claude Code spustí při události (před nástrojem, po editaci, při ukončení). Na rozdíl od promptu se provede vždy.</dd>
+    <dt>MCP</dt><dd>Model Context Protocol — standard, kterým se agentům připojují nástroje a data (dokumentace, prohlížeč, databáze, GitHub).</dd>
+    <dt>Brána (gate)</dt><dd>Místo v procesu, kde se čeká na rozhodnutí člověka.</dd>
+    <dt>Environment (GitHub)</dt><dd>Pojmenované cílové prostředí s vlastními secrets a pravidly schvalování nasazení.</dd>
+    <dt>GHCR</dt><dd>GitHub Container Registry — úložiště Docker obrazů vedle repozitáře.</dd>
+    <!-- AGENT: doplňuj pojmy z dalších kapitol (abecedně) -->
+  </dl>
+</section>
+</main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+(function () {
+  var koren = document.documentElement;
+  var ulozeny = null;
+  try { ulozeny = localStorage.getItem('tutorial-motiv'); } catch (e) {}
+  if (ulozeny === 'light' || ulozeny === 'dark') koren.setAttribute('data-theme', ulozeny);
+  function tmavy() {
+    var t = koren.getAttribute('data-theme');
+    return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  document.getElementById('prepinac-motivu').addEventListener('click', function () {
+    var novy = tmavy() ? 'light' : 'dark';
+    koren.setAttribute('data-theme', novy);
+    try { localStorage.setItem('tutorial-motiv', novy); } catch (e) {}
+    location.reload(); // Mermaid se vykreslí v novém motivu
+  });
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: true, theme: tmavy() ? 'dark' : 'neutral', securityLevel: 'strict' });
+  }
+})();
+</script>
+</body>
+</html>

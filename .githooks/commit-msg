@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Git hook (platí pro agenty i pro člověka): formát Conventional Commits.
+# Aktivace: git config core.hooksPath .githooks
+MSG=$(head -1 "$1")
+if ! echo "$MSG" | grep -Eq '^(feat|fix|refactor|test|docs|build|ci|chore|perf|security|revert)(\([a-z0-9-]+\))?!?: .{3,72}$'; then
+  echo "✗ Zpráva commitu neodpovídá Conventional Commits:" >&2
+  echo "  '$MSG'" >&2
+  echo "  Příklad: feat(clanky): přidán koncept článku" >&2
+  exit 1
+fi

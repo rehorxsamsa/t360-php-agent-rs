@@ -1,0 +1,14 @@
+/vendor/
+/node_modules/
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+.claude/logs/
+.claude/agent-memory-local/
+tests/_artefakty/
+.phpunit.cache/
+.php-cs-fixer.cache
+/var/
+*.key
+*.pem
