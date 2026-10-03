@@ -52,3 +52,10 @@ se zmírňují ve prospěch rychlého spuštění a ukázky práce agentů; nemu
 - Oddělit migrační heslo (`DB_MIGRACE_*`) od služby `app`, např. jednorázovým kontejnerem; v M2 je v `app` kvůli `bin/konzole` a integračním testům.
 - Produkční `prod` stage musí kopírovat i `config/`, `templates/`, `database/` a `bin/`.
 - Dvě sady testů nesmí běžet paralelně nad `redakce_test`.
+
+## Backlog po M4 a M5 (výukový režim)
+- **M4b:** veřejné rubriky `/rubrika/{slug}`, štítky `/stitek/{slug}` jako odkazy a fulltext `/hledat?q=` (vč. FULLTEXT migrace). Index u výpisu: `EXPLAIN` ukázal filesort, sledovat u většího objemu dat.
+- **M5b:** správa rubrik a štítků v administraci (CRUD, rubriku s články nelze smazat bez přesunu).
+- **M8:** `audit_log.created_at` a seedované články jsou v UTC, aplikace píše v Europe/Prague (přijaté riziko); omezení pokusů o přihlášení, timeouty session, CSP s nonce.
+- **Nápad:** `/favicon.ico` vrací 404 (drobná chyba v konzoli prohlížeče).
+- **Testovací účty v dev DB:** `admin@example.cz`, `qa-m3@example.test`, `t2b-test@example.cz` (jen lokální výuková data).
