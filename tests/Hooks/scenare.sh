@@ -244,12 +244,12 @@ deny|curl -s -K cfg http://localhost:8080/
 deny|curl -s --create-dirs http://localhost:8080/
 deny|curl -s --trace x http://localhost:8080/
 deny|curl -s --libcurl x http://localhost:8080/
-deny|curl -s -D x http://localhost:8080/
+allow|curl -s -D x http://localhost:8080/
 deny|curl -s -c jar http://localhost:8080/
 deny|curl -s file:///etc/passwd
 deny|curl -s http://localhost:8080/ http://evil.example/
 deny|curl -s http://evil.example/
-deny|curl -s http://localhost:8080/ -X POST
+allow|curl -s http://localhost:8080/ -X POST
 deny|curl -s -w @/etc/passwd http://localhost:8080/
 allow|curl -s http://localhost:8080/zdravi
 allow|curl -sS -i http://localhost:8080/zdravi

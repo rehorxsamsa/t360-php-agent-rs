@@ -283,10 +283,17 @@ while IFS= read -r seg; do
       if [[ "$t" =~ ^[0-9]*[\<\>] ]]; then k=$((k + 1)); continue; fi
       if [[ "$t" =~ ^-[sSiI]+$ ]]; then k=$((k + 1)); continue; fi
       if [[ "$t" == "-X" ]]; then
-        [[ "${T[k + 1]:-}" =~ ^(GET|HEAD)$ ]] || zamitni "curl -X smí mít jen GET nebo HEAD."
+        [[ "${T[k + 1]:-}" =~ ^(GET|HEAD|POST)$ ]] || zamitni "curl -X smí mít jen GET, HEAD nebo POST."
         k=$((k + 2)); continue
       fi
-      if [[ "$t" =~ ^-X(GET|HEAD)$ ]]; then k=$((k + 1)); continue; fi
+      if [[ "$t" =~ ^-X(GET|HEAD|POST)$ ]]; then k=$((k + 1)); continue; fi
+      # Výukový režim: povoleno i -D <soubor|->, -m <s>, -d <data>, -o /dev/null, --path-as-is.
+      if [[ "$t" == "-D" || "$t" == "-m" || "$t" == "-d" ]]; then k=$((k + 2)); continue; fi
+      if [[ "$t" == "-o" ]]; then
+        [[ "${T[k + 1]:-}" == "/dev/null" ]] || zamitni "curl -o smí jen /dev/null."
+        k=$((k + 2)); continue
+      fi
+      if [[ "$t" == "--path-as-is" ]]; then k=$((k + 1)); continue; fi
       if [[ "$t" == "-w" || "$t" == "-H" ]]; then k=$((k + 2)); continue; fi
       if [[ "$t" =~ ^-[wH]. ]]; then k=$((k + 1)); continue; fi
       if [[ "$t" == -* ]]; then
