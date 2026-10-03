@@ -1,7 +1,7 @@
 # Architektura — Redakční systém (t360)
 
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plán 001 M1 — hotovo;
-> plán 002 M2 — implementováno, části označené „M2“ existují v kódu).
+> plán 002 M2 — implementováno, části označené „M2“ existují v kódu; plán 003 M3 — návrh).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -22,9 +22,10 @@ flowchart LR
         CFG --> DI
     end
     subgraph Http["App\\Http — Kernel, Routing, Middleware, View, Controller"]
-        K[Kernel] --> MW["MiddlewarePipeline<br/>M2: ErrorHandler<br/>M3: bezp. hlavičky → session → CSRF<br/>→ autentizace → autorizace"]
-        MW --> RT["Router::match"]
+        K[Kernel] --> MW["MiddlewarePipeline<br/>M3 (plán 003): SecurityHeaders → ErrorHandler<br/>→ Routing → Csrf → AdminAccess"]
+        MW --> RT["RoutingMiddleware<br/>Router::match"]
         RT --> C["Controller"]
+        S["Session (líná služba)<br/>CsrfToken, AuthSession"] -.-> MW
         C --> V["TemplateRenderer + e()<br/>templates/*.php"]
     end
     subgraph Con["App\\Console (M2)"]
@@ -59,6 +60,12 @@ a jeho PDO implementace. M2 (plán 002) přidal kontejner, router, middleware, �
 stránky, konzoli a migrátor. `App\Container` je technické jádro bez závislostí na doméně;
 kontejner smí volat jen kompoziční kořen a `Kernel` (dispečer), controllery dostávají závislosti
 konstruktorem.
+
+M3 (plán 003, návrh) — odchylky od zásady „bezp. hlavičky → session → CSRF → autentizace →
+autorizace“: párování trasy se přesouvá do `RoutingMiddleware` **před** CSRF (zachová 404/405 pro
+neexistující trasy); session není vrstva, ale líná služba (`Http\Session\Session`, implementace
+`Infrastructure\Session\NativeSession`) — veřejné stránky nedostanou cookie; autentizace a autorizace
+jsou jeden `AdminAccessMiddleware` (jediná role `admin`, ochrana podle prefixu `/admin`).
 
 ## 2. Běhové prostředí (dev, `compose.yaml`, projekt `t360`)
 Hostitel má jen `docker`, `git`, `bash`, `jq` (+ `make`, `curl` — čeká na schválení). Žádné PHP ani Node.
