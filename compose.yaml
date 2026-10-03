@@ -20,7 +20,8 @@ services:
         HOST_GID: ${HOST_GID:-1000}
     container_name: app-t360
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
-    # Jen to, co app potřebuje: žádný root, DB_MIGRACE_PASSWORD ani DB_READONLY_PASSWORD.
+    # Žádný root ani DB_READONLY_PASSWORD. Migrační účet (DDL) je tu jen pro bin/konzole a integrační
+    # testy migrátoru (plán 002, otázka 1); webová část ho nikdy nečte (líná továrna v config/container.php).
     environment:
       APP_ENV: ${APP_ENV:-dev}
       APP_DEBUG: ${APP_DEBUG:-1}
@@ -31,6 +32,8 @@ services:
       DB_NAME: ${DB_NAME:-redakce}
       DB_USER: ${DB_USER:-redakce_app}
       DB_PASSWORD: ${DB_PASSWORD:?chybí DB_PASSWORD v .env}
+      DB_MIGRACE_USER: redakce_migrace
+      DB_MIGRACE_PASSWORD: ${DB_MIGRACE_PASSWORD:?chybí DB_MIGRACE_PASSWORD v .env}
     # Zastavená db: embedded DNS Dockeru by jinak čekal ~3,9 s (AC 12 plánu 001).
     dns_opt:
       - timeout:1
@@ -47,6 +50,8 @@ services:
       - ./vendor:/app/vendor
       - ./database:/app/database
       - ./bin:/app/bin
+      - ./config:/app/config
+      - ./templates:/app/templates
       - ./composer.json:/app/composer.json
       - ./composer.lock:/app/composer.lock
       # Tajemství (.env) kontejner nevidí – hodnoty dostává jen přes `environment:` výše (revize M1, S4).

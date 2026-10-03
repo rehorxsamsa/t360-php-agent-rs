@@ -32,6 +32,9 @@ Plán: `docs/plan/001-docker-zaklad.md` (AC 10–14).
 1. `curl -s http://localhost:8080/neexistuje -w '\n%{http_code}\n'` → `404`, bez stack trace.
 2. `curl -s http://localhost:8080/zdravi -X POST -D - -o /dev/null` → `405` a hlavička `Allow: GET`.
 3. Žádná z odpovědí není `500`.
+4. (M2) Plán `docs/plan/002-router-di-migrator.md` (AC 19): 404 je HTML stránka s textem
+   „Stránka nenalezena“ a odkazem na `/`; 405 obsahuje „Metoda není povolena“; tělo bez
+   `Stack trace` a `.php`.
 
 ### Z5: web servíruje jen public/ (negativní)
 1. `curl -s http://localhost:8080/vendor/autoload.php -w '\n%{http_code}\n'` → `404`.
@@ -39,6 +42,26 @@ Plán: `docs/plan/001-docker-zaklad.md` (AC 10–14).
 3. `curl -s http://localhost:8080/index.php/zdravi -w '\n%{http_code}\n'` nesmí vrátit zdrojový kód
    ani `500` (očekává se `404`).
 4. Tělo žádné odpovědi neobsahuje `<?php`.
+
+### Z7: titulní stránka (M2)
+Plán: `docs/plan/002-router-di-migrator.md` (AC 18, 20).
+1. `curl -s http://localhost:8080/ -D -` → `200`, `Content-Type: text/html; charset=utf-8`,
+   tělo obsahuje `<html lang="cs">` a nadpis „Redakční systém“.
+2. Playwright: `browser_navigate` na `http://web/`; snímek obsahuje nadpis „Redakční systém“
+   a text „Články přibudou v dalším milníku.“; screenshot `tests/_artefakty/titulni-m2.png`.
+3. Playwright: `http://web/neexistuje` → stránka „Stránka nenalezena“, odkaz „Zpět na titulní
+   stránku“ vede na `/`; screenshot `tests/_artefakty/404-m2.png`.
+4. Regrese: `curl -s http://localhost:8080/zdravi -w '\n%{http_code}\n'` → `{"stav":"ok","db":"ok"}` a `200`.
+
+### Z8: migrace a konzole (M2)
+Plán: `docs/plan/002-router-di-migrator.md` (AC 25, 26).
+1. `docker compose exec -T app php bin/konzole; echo $?` → seznam `migrace:spust`, `migrace:vrat`,
+   `migrace:stav`, kód `0`.
+2. `docker compose exec -T app php bin/konzole neznamy:prikaz; echo $?` → chyba na stderr, kód `1`.
+3. Čistá dev DB: `make migrate` → „Spuštěno: …“ pro každou migraci; znovu `make migrate` →
+   „Žádné čekající migrace.“; `docker compose exec -T app php bin/konzole migrace:stav` → všechny
+   řádky `[x] … (čas)`. Všechny tři kroky končí kódem `0`.
+4. Negativní: `migrace:vrat --kroky=0` → chyba, kód `1` (N musí být ≥ 1).
 
 ### Z6: nepřihlášený / CSRF / role
 Netýká se M1 (žádné admin URL ani POST formuláře kromě `/zdravi`). Přibude s M3.

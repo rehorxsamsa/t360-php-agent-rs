@@ -27,7 +27,7 @@ empty :=
 space := $(empty) $(empty)
 ARGS_REST := $(subst $(space),,$(call strip_chars,$(SAFE_ARGS),$(ALLOWED_CHARS)))
 
-.PHONY: help up down sh composer check test qa fix logs ps mcp test-hooks
+.PHONY: help up down sh composer check test qa fix migrate logs ps mcp test-hooks
 
 help: ## Seznam cílů
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -63,6 +63,9 @@ qa: ## Kompletní brána (check + test + composer audit)
 
 fix: ## Automatická oprava stylu (php-cs-fixer)
 	$(COMPOSE) exec -T app composer cs:fix
+
+migrate: ## Spustí čekající migrace databáze
+	$(COMPOSE) exec -T app php bin/konzole migrace:spust
 
 logs: ## Logy všech služeb
 	$(COMPOSE) logs --tail=100 -f

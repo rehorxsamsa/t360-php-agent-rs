@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Http;
 
+use App\Container\Container;
 use App\Domain\Health\DatabaseHealth;
-use App\Http\Controller\HealthController;
 use App\Http\Kernel;
 use App\Http\Request;
 use App\Http\Response;
+use App\Http\Routing\Router;
+use App\Tests\Unit\Http\Fixtures\ThrowingController;
 use PHPUnit\Framework\TestCase;
 
 final class KernelTest extends TestCase
@@ -26,7 +28,7 @@ final class KernelTest extends TestCase
         $_SERVER = $this->serverBackup;
     }
 
-    private function kernel(bool $databaseReachable): Kernel
+    private function container(bool $databaseReachable): Container
     {
         $health = new class ($databaseReachable) implements DatabaseHealth {
             public function __construct(private readonly bool $reachable) {}
@@ -37,7 +39,16 @@ final class KernelTest extends TestCase
             }
         };
 
-        return new Kernel(new HealthController($health));
+        /** @var Container $container */
+        $container = require __DIR__ . '/../../../config/container.php';
+        $container->set(DatabaseHealth::class, static fn(): DatabaseHealth => $health);
+
+        return $container;
+    }
+
+    private function kernel(bool $databaseReachable): Kernel
+    {
+        return $this->container($databaseReachable)->get(Kernel::class);
     }
 
     private function request(string $method, string $uri): Request
@@ -113,9 +124,60 @@ final class KernelTest extends TestCase
         self::assertStringNotContainsString('.php', $response->body);
     }
 
-    public function test_root_path_returns_404_in_milestone_one(): void
+    public function test_root_path_returns_200_html_homepage(): void
     {
-        self::assertSame(404, $this->handle(true, 'GET', '/')->status);
+        $response = $this->handle(true, 'GET', '/');
+        $headers = $this->lowercaseHeaders($response);
+
+        self::assertSame(200, $response->status);
+        self::assertSame('text/html; charset=utf-8', $headers['content-type'] ?? null);
+        self::assertStringContainsString('<html lang="cs">', $response->body);
+        self::assertStringContainsString('Redakční systém', $response->body);
+    }
+
+    public function test_unknown_path_renders_czech_html_404_page_with_link_home(): void
+    {
+        $response = $this->handle(true, 'GET', '/neexistuje');
+        $headers = $this->lowercaseHeaders($response);
+
+        self::assertSame(404, $response->status);
+        self::assertSame('text/html; charset=utf-8', $headers['content-type'] ?? null);
+        self::assertStringContainsString('Stránka nenalezena', $response->body);
+        self::assertStringContainsString('href="/"', $response->body);
+    }
+
+    public function test_post_to_health_renders_czech_html_405_page(): void
+    {
+        $response = $this->handle(true, 'POST', '/zdravi');
+
+        self::assertStringContainsString('Metoda není povolena', $response->body);
+    }
+
+    public function test_controller_exception_returns_500_without_leaking_detail_and_logs_it(): void
+    {
+        $logFile = sys_get_temp_dir() . '/t360-kernel-' . bin2hex(random_bytes(4)) . '.log';
+        $previous = ini_set('error_log', $logFile);
+
+        try {
+            $container = $this->container(true);
+            $container->get(Router::class)->get('/boom', [ThrowingController::class, 'index']);
+            $response = $container->get(Kernel::class)->handle($this->request('GET', '/boom'));
+
+            self::assertSame(500, $response->status);
+            self::assertStringContainsString('Interní chyba serveru', $response->body);
+            self::assertStringNotContainsString('tajny-detail', $response->body);
+
+            $log = (string) file_get_contents($logFile);
+            self::assertStringContainsString('RuntimeException', $log);
+            self::assertStringContainsString('tajny-detail', $log);
+        } finally {
+            if ($previous !== false) {
+                ini_set('error_log', $previous);
+            }
+            if (is_file($logFile)) {
+                unlink($logFile);
+            }
+        }
     }
 
     public function test_post_to_health_returns_405_with_allow_get(): void

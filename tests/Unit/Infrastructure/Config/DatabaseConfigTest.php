@@ -113,4 +113,35 @@ final class DatabaseConfigTest extends TestCase
 
         DatabaseConfig::fromEnvironment($environment);
     }
+
+    public function test_for_migrations_uses_migration_credentials_and_shared_connection_values(): void
+    {
+        $environment = $this->validEnvironment() + [
+            'DB_MIGRACE_USER' => 'redakce_migrace',
+            'DB_MIGRACE_PASSWORD' => 'migracni-heslo',
+        ];
+
+        $config = DatabaseConfig::forMigrations($environment);
+
+        self::assertSame('db', $config->host);
+        self::assertSame(3306, $config->port);
+        self::assertSame('redakce_test', $config->name);
+        self::assertSame('redakce_migrace', $config->user);
+        self::assertSame('migracni-heslo', $config->password);
+    }
+
+    public function test_for_migrations_defaults_user_to_redakce_migrace(): void
+    {
+        $environment = $this->validEnvironment() + ['DB_MIGRACE_PASSWORD' => 'migracni-heslo'];
+
+        self::assertSame('redakce_migrace', DatabaseConfig::forMigrations($environment)->user);
+    }
+
+    public function test_for_migrations_requires_migration_password(): void
+    {
+        $this->expectException(MissingConfiguration::class);
+        $this->expectExceptionMessage('DB_MIGRACE_PASSWORD');
+
+        DatabaseConfig::forMigrations($this->validEnvironment());
+    }
 }

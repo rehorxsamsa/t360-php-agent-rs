@@ -1,0 +1,16 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use App\Console\ConsoleApplication;
+use App\Console\Output;
+use App\Container\Container;
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+/** @var Container $container */
+$container = require dirname(__DIR__) . '/config/container.php';
+
+// exit je povolen jen v tomto vstupním bodu (návratový kód procesu).
+exit($container->get(ConsoleApplication::class)->run(array_slice($argv, 1), new Output(STDOUT, STDERR)));

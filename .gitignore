@@ -12,3 +12,4 @@ tests/_artefakty/
 /var/
 *.key
 *.pem
+.playwright-mcp/

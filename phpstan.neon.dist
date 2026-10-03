@@ -4,4 +4,11 @@ parameters:
         - src
         - tests
         - public
+        - config
+        - database
+        - bin/konzole
+    excludePaths:
+        analyse:
+            # Šablony: proměnné vznikají přes extract(), statická analýza by je hlásila jako nedefinované.
+            - tests/Unit/Http/View/templates
     tmpDir: var/phpstan

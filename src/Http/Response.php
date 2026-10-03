@@ -48,6 +48,22 @@ final readonly class Response
         );
     }
 
+    /**
+     * @param array<string, string> $extraHeaders
+     */
+    public static function html(string $body, int $status = 200, array $extraHeaders = []): self
+    {
+        return new self(
+            $status,
+            [
+                'Content-Type' => 'text/html; charset=utf-8',
+                'Cache-Control' => 'no-store',
+                'X-Content-Type-Options' => 'nosniff',
+            ] + $extraHeaders,
+            $body,
+        );
+    }
+
     public function send(): void
     {
         http_response_code($this->status);

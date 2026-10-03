@@ -4,25 +4,42 @@ declare(strict_types=1);
 
 namespace App\Http;
 
-use App\Http\Controller\HealthController;
+use App\Container\Container;
+use App\Http\Middleware\MiddlewarePipeline;
+use App\Http\Routing\Router;
 
 /**
- * V M1 jen jedna pevná cesta; router ji v M2 nahradí.
+ * Jádro HTTP: pipeline middleware, uprostřed router a sestavení controlleru z kontejneru.
+ * Kernel je (vedle index.php a bin/konzole) jediné místo, které smí sahat do kontejneru.
  */
 final readonly class Kernel
 {
-    public function __construct(private HealthController $health) {}
+    public function __construct(
+        private Router $router,
+        private Container $container,
+        private MiddlewarePipeline $pipeline,
+    ) {}
 
     public function handle(Request $request): Response
     {
-        if ($request->path !== '/zdravi') {
-            return Response::text('Stránka nenalezena.', 404);
+        return $this->pipeline->handle($request, $this->dispatch(...));
+    }
+
+    private function dispatch(Request $request): Response
+    {
+        $match = $this->router->match($request->method, $request->path);
+
+        [$class, $method] = $match->handler;
+        $action = [$this->container->get($class), $method];
+        if (!is_callable($action)) {
+            throw new \LogicException(sprintf('Controller %s nemá metodu %s().', $class, $method));
         }
 
-        if ($request->method !== 'GET') {
-            return Response::text('Metoda není povolena.', 405, ['Allow' => 'GET']);
+        $response = $action($request->withRouteParameters($match->parameters));
+        if (!$response instanceof Response) {
+            throw new \LogicException(sprintf('Controller %s::%s() musí vrátit Response.', $class, $method));
         }
 
-        return ($this->health)();
+        return $response;
     }
 }
