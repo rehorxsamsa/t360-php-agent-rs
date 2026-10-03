@@ -186,3 +186,84 @@ Veřejná část je jen čtení (GET), žádný formulář.
    → `possible_keys` obsahuje `idx_articles_status_published_at` (u 16 řádků může optimalizátor zvolit plný průchod – informativní, ne FAIL).
 3. Regrese: `/zdravi` → `200 {"stav":"ok","db":"ok"}`; `POST /zdravi` → `405`; `/admin` → `303` na `/admin/prihlaseni`;
    přihlášení admina (P3/P4) funguje; titulní stránka a detail nenastavují `Set-Cookie` (session se zakládá líně).
+
+## Administrace článků (M5)
+
+Plán: `docs/plan/005-sprava-clanku.md` (AC 36–39). Předpoklad: `make up`, `make migrate`, `make seed`,
+admin „Administrátor“ z P5 (`admin@example.cz`). Pravidla hooku pro curl: URL bez uvozovek, zavináč v `-d` jako `%40`,
+cookie jen přes `-H 'Cookie: redakce_session=…'`. Playwright běží v síti compose → `http://web/`.
+Snímky do `tests/_artefakty/`.
+
+### A1: nepřihlášený a POST bez tokenu (negativní, curl)
+1. MCP (`redakce_cteni`): `SELECT COUNT(*) FROM articles` → zapsat si počet N.
+2. `curl -s http://localhost:8080/admin/clanky -D - -o /dev/null` → `303`, `Location: /admin/prihlaseni`.
+3. Totéž pro `/admin/clanky/novy`, `/admin/clanky/1/upravit`, `/admin/clanky/1/smazat` → vždy `303` na přihlášení (nikdy `200`/`500`).
+4. `curl -s -X POST http://localhost:8080/admin/clanky/1/smazat -o /dev/null -w '%{http_code}'` (bez cookie a tokenu) → `403`.
+5. `curl -s -X POST http://localhost:8080/admin/clanky/novy -d title=X -o /dev/null -w '%{http_code}'` → `403`.
+6. `curl -s -X PUT http://localhost:8080/admin/clanky/1/upravit -D - -o /dev/null` → `405`, `Allow: GET, POST`.
+7. MCP: `SELECT COUNT(*) FROM articles` → stále N (nic se nesmazalo ani nevytvořilo).
+
+### A2: přihlášený přes curl (CSRF, 404 a 422; negativní)
+1. Přihlásit se podle P2–P3 (cookie `redakce_session` a `_csrf` z přihlašovací stránky; e-mail v `-d` jako `admin%40example.cz`).
+2. `curl -s http://localhost:8080/admin/clanky -H 'Cookie: redakce_session=<cookie>' -o /dev/null -w '%{http_code}'` → `200`.
+3. `curl -s -X POST http://localhost:8080/admin/clanky/1/smazat -H 'Cookie: redakce_session=<cookie>' -o /dev/null -w '%{http_code}'`
+   (bez `_csrf`) → `403`; s `-d _csrf=abc` → `403`; počet článků (MCP) beze změny.
+4. S cookie: `/admin/clanky/999999/upravit`, `/admin/clanky/0/upravit`, `/admin/clanky/abc/upravit`, `/admin/clanky/05/upravit`,
+   `/admin/clanky/1234567890123456789/upravit` → `404` „Stránka nenalezena“ (nikdy `500`, bez `SQLSTATE` a `Stack trace`).
+5. S cookie: `/admin/clanky?strana=99`, `?strana=0`, `?strana=abc` → `404`.
+6. S cookie a platným tokenem: `-d title= -d category_id= -d _csrf=<token>` na `/admin/clanky/novy` → `422`, tělo obsahuje
+   „Vyplňte titulek.“ a „Vyberte rubriku.“, nic se neuložilo.
+
+### A3: seznam a chyby formuláře v prohlížeči
+1. Playwright: `browser_navigate` na `http://web/admin` → přihlásit se jako admin → rozcestník má odkaz „Články“
+   (věta „Správa článků přibude v dalším milníku.“ už není).
+2. Kliknout „Články“ → URL `/admin/clanky`, nadpis „Články“, tabulka se seedovanými články včetně konceptů, archivu
+   a „Naplánováno“ u článku z roku 2099; sloupce stav / rubrika / datum publikace / „Naposledy upraveno“ (u seedu „neuvedeno“);
+   snímek `tests/_artefakty/admin-clanky-m5.png`.
+3. Kliknout „Nový článek“ → URL `/admin/clanky/novy`, formulář s poli Titulek, Adresa (slug) s nápovědou
+   „Nechte prázdné – vytvoří se z titulku.“, Perex, Text, Rubrika („— vyberte rubriku —“), Štítky (zaškrtávátka),
+   Stav (Koncept vybraný), Datum publikace.
+4. Odeslat prázdný formulář (validaci prohlížeče u `required` obejít přes `browser_evaluate`
+   `() => { document.querySelector('form[action="/admin/clanky/novy"]').noValidate = true; }`) → HTTP `422`
+   (ověřit v `browser_network_requests`), souhrn „Článek se nepodařilo uložit, opravte prosím chyby ve formuláři.“,
+   u polí „Vyplňte titulek.“ a „Vyberte rubriku.“; pole titulku má `aria-invalid="true"`.
+
+### A4: vytvoření článku a zobrazení na webu
+1. Vyplnit titulek „Můj první článek z administrace“, perex „Perex z E2E.“, text `**Tučně** a <script>alert(1)</script>`,
+   rubriku Technologie, zaškrtnout štítky PHP a Docker, stav Publikováno, datum prázdné → „Uložit článek“.
+2. Očekávání: URL `/admin/clanky/{id}/upravit`, hláška „Článek byl vytvořen.“, pole slug = `muj-prvni-clanek-z-administrace`,
+   „Naposledy upraveno … (Administrátor)“, sekce „Náhled uloženého textu“ s tučným „Tučně“ a viditelným textem
+   `<script>alert(1)</script>` (žádný dialog), odkaz „Zobrazit na webu“; snímek `tests/_artefakty/admin-clanek-m5.png`.
+3. Obnovit stránku (`browser_navigate` na stejnou URL) → hláška „Článek byl vytvořen.“ už není (flash jen jednou).
+4. `http://web/` → článek „Můj první článek z administrace“ je první v seznamu.
+5. `http://web/clanek/muj-prvni-clanek-z-administrace` → detail se štítky „Docker“, „PHP“, `<script>` jen jako text.
+
+### A5: úprava, kolize slugu a smazání
+1. Na stránce úprav prvního článku změnit titulek na „Můj první článek z administrace (upraveno)“ → „Uložit článek“
+   → „Změny byly uloženy.“, slug zůstal `muj-prvni-clanek-z-administrace`.
+2. „Články“ → „Nový článek“ → titulek „Můj první článek z administrace“ (původní), rubrika Zprávy, stav Koncept → uložit
+   → slug `muj-prvni-clanek-z-administrace-2`, odkaz „Zobrazit na webu“ chybí (koncept).
+3. U druhého článku „Smazat článek“ → URL `/admin/clanky/{id}/smazat`, text „Opravdu smazat článek „Můj první článek
+   z administrace“? Akci nelze vrátit.“, odkaz „Zrušit“ vede zpět na úpravu; samotné otevření stránky nic nesmaže.
+4. Potvrdit „Smazat článek“ → URL `/admin/clanky`, hláška „Článek „Můj první článek z administrace“ byl smazán.“,
+   druhý článek v seznamu není, první ano.
+5. MCP (`redakce_cteni`): `SELECT action, entity_type, entity_id, summary FROM audit_log ORDER BY id DESC LIMIT 4`
+   → shora `article.deleted` (`… [muj-prvni-clanek-z-administrace-2]`), `article.created` (`…-2`),
+   `article.updated` (`Můj první článek z administrace (upraveno) [muj-prvni-clanek-z-administrace]`), `article.created`;
+   `entity_type = article`, `entity_id` odpovídá ID článků.
+6. MCP: `SELECT created_by, updated_by, created_at, updated_at FROM articles WHERE slug = 'muj-prvni-clanek-z-administrace'`
+   → `created_by = updated_by` = ID admina, časy v pražském čase (ne UTC); `SELECT COUNT(*) FROM article_tags t
+   JOIN articles a ON a.id = t.article_id WHERE a.slug = 'muj-prvni-clanek-z-administrace'` → `2`.
+7. `browser_console_messages` (level `error`) prázdné – žádná chyba CSP.
+
+### A6: klávesnice a dostupnost
+1. Na `/admin/clanky/novy` projít formulář jen klávesnicí: `Tab` mezi poli v pořadí titulek → slug → perex → text →
+   rubrika → štítky → stav → datum → „Uložit článek“; mezerník zaškrtne štítek; šipky vyberou volbu v `select`; `Enter` odešle.
+2. Každé pole má viditelný popisek (kliknutí na `<label>` zaostří pole); zaostřený prvek má viditelný obrys.
+3. Po chybě (A3 krok 4) je souhrn v `role="alert"` a pole s chybou odkazuje na hlášku (`aria-describedby`).
+4. `browser_resize` na 375 px: tabulka seznamu se posouvá uvnitř svého obalu, stránka nemá vodorovný posuvník.
+
+### A7: regrese
+1. Plán 004 V2–V3 a V7: titulní stránka, detail, `/zdravi` → `200 {"stav":"ok","db":"ok"}`, přihlášení (P3/P4) dál funguje.
+2. První článek z A4 zůstává v dev DB (`make seed` ho nepřepíše, seed hlásí „nic nového se nevložilo“); druhý smazal A5.
+3. Po odhlášení se hláška „Byli jste odhlášeni.“ zobrazí právě jednou (flash sdílený přes `Flash`).
