@@ -200,7 +200,7 @@ Snímky do `tests/_artefakty/`.
 3. Totéž pro `/admin/clanky/novy`, `/admin/clanky/1/upravit`, `/admin/clanky/1/smazat` → vždy `303` na přihlášení (nikdy `200`/`500`).
 4. `curl -s -X POST http://localhost:8080/admin/clanky/1/smazat -o /dev/null -w '%{http_code}'` (bez cookie a tokenu) → `403`.
 5. `curl -s -X POST http://localhost:8080/admin/clanky/novy -d title=X -o /dev/null -w '%{http_code}'` → `403`.
-6. `curl -s -X PUT http://localhost:8080/admin/clanky/1/upravit -D - -o /dev/null` → `405`, `Allow: GET, POST`.
+6. Metoda PUT na `/admin/clanky/1/upravit` → `405`, `Allow: GET, POST`. Hook `curl -X PUT` zakazuje, proto je to ověřeno unit testem (AC 27), v E2E se krok přeskakuje.
 7. MCP: `SELECT COUNT(*) FROM articles` → stále N (nic se nesmazalo ani nevytvořilo).
 
 ### A2: přihlášený přes curl (CSRF, 404 a 422; negativní)

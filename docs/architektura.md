@@ -1,7 +1,7 @@
 # Architektura — Redakční systém (t360)
 
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plány 001–004, M1–M4 — hotovo;
-> plán 005 M5 administrace článků — návrh, čeká na bránu 1).
+> plán 005 M5 administrace článků — implementováno).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -77,7 +77,7 @@ stejně jako neexistující trasu. Markdown → HTML jen přes `Http\View\Markdo
 výpis bez `e()` mimo `layout.php`). Seed (`db:seed`) je soubor `database/seeds/demo_content.php` vracející
 objekt s rozhraním `Infrastructure\Seed\Seed` — obdoba migrací; běží jako `redakce_app`, nic nemaže.
 
-M5 (plán 005, návrh) — administrace článků jde `Admin\ArticleController → CreateArticle / UpdateArticle /
+M5 (plán 005, hotovo) — administrace článků jde `Admin\ArticleController → CreateArticle / UpdateArticle /
 DeleteArticle, AdminArticles (Application) → ArticleAdminRepository, CategoryRepository, TagRepository,
 AuditLogRepository (Domain) ← Pdo*`. Administrace má **vlastní rozhraní repozitáře** (všechny stavy + zápis),
 veřejné `ArticleRepository` zůstává jen pro publikované. Validace formuláře je v `ArticleInputValidator`

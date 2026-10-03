@@ -102,6 +102,7 @@ ol.kroky{padding-left:1.4rem} ol.kroky > li{margin:.4rem 0}
     <li><a href="#m2">Router, kontejner, šablony a migrace</a></li>
     <li><a href="#m3">Přihlášení admina</a></li>
     <li><a href="#m4">Veřejná část: výpis, detail a Markdown</a></li>
+    <li><a href="#m5">Správa článků v administraci</a></li>
     <li><a href="#architektura">Architektura aplikace</a></li>
     <li><a href="#bezpecnost">Bezpečnost v kódu</a></li>
     <li><a href="#ai-01">AI 01 · Perex na jedno kliknutí</a></li>
@@ -919,6 +920,251 @@ curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/clanek/Ukazka-Markd
   <!-- AGENT: kapitola M4 -->
 </section>
 
+<section class="kapitola" id="m5">
+  <h2>Správa článků v administraci</h2>
+  <p class="cil">Milník M5: přihlášený admin na <code>/admin/clanky</code> vidí všechny články (i koncepty, archiv a
+  naplánované), vytvoří nový, upraví existující a smaže ho po potvrzení. Formulář hlídá server a chyby hlásí česky
+  u polí. Každé vytvoření, úprava a smazání se zapíše do <code>audit_log</code>. Rubriky a štítky se ve formuláři
+  jen vybírají, pocházejí ze seedu.</p>
+
+  <h3>Jak to funguje</h3>
+  <pre class="mermaid">
+flowchart LR
+  B[POST /admin/clanky/5/upravit] --> C[Csrf + AdminAccess<br/>middleware]
+  C --> K[Admin ArticleController<br/>tenký, bez SQL]
+  K --> U[UpdateArticle<br/>use-case]
+  U --> V[ArticleInputValidator<br/>české chyby]
+  U --> R[ArticleAdminRepository<br/>transakce: článek + štítky]
+  U --> A[AuditLogRepository<br/>article.updated]
+  V -. chyby .-> E[InvalidArticleInput → 422 + formulář]
+  K --> F[Flash + 303 na /admin/clanky/5/upravit]
+  </pre>
+  <p>Vrstvy znáš z M4. Controller řeší HTTP, <strong>use-case</strong> (třída s jedním úkolem, tady
+  <code>CreateArticle</code>, <code>UpdateArticle</code> a <code>DeleteArticle</code> ve vrstvě Application) řeší
+  pravidla a pořadí kroků a jediné místo se SQL je <code>PdoArticleAdminRepository</code>. Veřejná část dál používá
+  vlastní <code>ArticleRepository</code> jen pro publikované články. Administrace má rozhraní zvlášť, takže pravidlo
+  „veřejně jen publikované“ nejde omylem obejít.</p>
+
+  <h3>Krok 1 – Trasy a ochrana</h3>
+  <p>Trasy jsou v <code>config/routes.php</code>. Všechny leží pod prefixem <code>/admin</code>, který z M3 chrání
+  <code>AdminAccessMiddleware</code>:</p>
+  <pre><code>GET  /admin/clanky               seznam (20 na stranu, ?strana=N)
+GET  /admin/clanky/novy          prázdný formulář      POST /admin/clanky/novy          uložení
+GET  /admin/clanky/{id}/upravit  formulář s daty       POST /admin/clanky/{id}/upravit  uložení
+GET  /admin/clanky/{id}/smazat   potvrzení             POST /admin/clanky/{id}/smazat   smazání</code></pre>
+  <p>Adresy používají <strong>ID</strong>, ne slug, protože slug se smí změnit. ID z adresy se ověří vzorem
+  <code>/^[1-9][0-9]{0,17}\z/</code> ještě před dotazem. Cokoli jiného (<code>abc</code>, <code>05</code>, <code>0</code>)
+  i neexistující článek vrátí stejnou 404. Controller navíc sám znovu zkontroluje, že je někdo přihlášený
+  (<code>AuthSession::user()</code>). Kdyby se jednou nová trasa omylem dostala mimo prefix, druhá pojistka zůstane.</p>
+
+  <h3>Krok 2 – Slug z titulku a kolize <code>-2</code></h3>
+  <p>Admin slug vyplňovat nemusí. Prázdné pole znamená „vytvoř z titulku“. Převod dělá čistá funkce
+  <code>Slug::fromText()</code> (<code>src/Domain/Article/Slug.php</code>): diakritiku nahradí vlastní tabulka
+  (ne <code>intl</code> ani <code>iconv</code>, jejichž výsledek závisí na jazykovém nastavení kontejneru), pak
+  zmenší písmena, vše mimo <code>a–z</code> a <code>0–9</code> změní na pomlčku, zkrátí na 200 znaků a když nezbude
+  nic, vrátí <code>clanek</code>. Vyzkoušej to:</p>
+  <pre><code>docker compose exec -T app php -r 'require "vendor/autoload.php"; echo App\Domain\Article\Slug::fromText("Šablony &amp; escapování: &lt;script&gt; se nespustí");'
+sablony-escapovani-script-se-nespusti
+# Slug::fromText("Žluťoučký kůň")  →  zlutoucky-kun
+# Slug::fromText("!!!")            →  clanek</code></pre>
+  <p>Dva články se stejným titulkem by dostaly stejný slug a databáze má na slug <code>UNIQUE</code> index.
+  <code>Slug::uniqueAmong()</code> proto z množiny obsazených slugů vybere první volný: <code>base</code>, jinak
+  <code>base-2</code>, <code>base-3</code>… Obsazené slugy načte <strong>jeden</strong> dotaz
+  <code>takenSlugs()</code>, žádná smyčka dotazů:</p>
+  <pre><code>Slug::uniqueAmong('novy-clanek', ['novy-clanek', 'novy-clanek-2']);   // 'novy-clanek-3'
+
+// PdoArticleAdminRepository::takenSlugs – slug přesně, nebo začínající „base-“
+'SELECT slug FROM articles'
+. ' WHERE (slug COLLATE utf8mb4_bin = :base OR slug COLLATE utf8mb4_bin LIKE :prefix)'
+. ' AND id &lt;&gt; :except_id'</code></pre>
+  <p>Binární kolace (<code>utf8mb4_bin</code>) je tu schválně. Běžná <code>utf8mb4_czech_ci</code> nerozlišuje velikost
+  písmen a zachází se skupinou „ch“ jako s jedním písmenem, takže by porovnání nebylo přesné. Parametr
+  <code>except_id</code> je kvůli úpravě: vlastní slug článku se nesmí počítat jako kolize sám se sebou. A kdyby
+  dva admini uložili stejný titulek ve stejnou chvíli, chytí to <code>UNIQUE</code> index. Repozitář chybu 1062
+  přeloží na <code>SlugAlreadyTaken</code> a use-case na hlášku „Adresa (slug) je už obsazená, uložte formulář znovu.“</p>
+  <p>Při úpravě se slug <strong>nemění sám</strong>, když přepíšeš titulek. Změna slugu rozbije staré odkazy
+  (<code>/clanek/…</code>), a to chceš dělat vědomě. Slug změníš ručně ve formuláři, nebo ho smažeš a vygeneruje se znovu.
+  Ručně zadaný slug se normalizuje stejně jako titulek (<code>Můj Slug!</code> → <code>muj-slug</code>).</p>
+
+  <h3>Krok 3 – Validace na serveru s českými chybami</h3>
+  <p>Atributy <code>required</code> a <code>maxlength</code> v HTML jsou jen pohodlí pro uživatele. Útočník formulář
+  vůbec nepoužije a pošle POST sám. Rozhoduje proto <code>ArticleInputValidator</code>
+  (<code>src/Application/Article/ArticleInputValidator.php</code>), který sbírá <strong>všechny</strong> chyby najednou,
+  aby admin nemusel opravovat po jedné:</p>
+  <div class="tabulka"><table>
+    <tr><th>Pole</th><th>Pravidlo</th><th>Hláška</th></tr>
+    <tr><td><code>title</code></td><td>povinný, max. 200 znaků</td><td>Vyplňte titulek.</td></tr>
+    <tr><td><code>excerpt</code></td><td>volitelný, max. 500 znaků</td><td>Perex může mít nejvýše 500 znaků.</td></tr>
+    <tr><td><code>body</code></td><td>max. 100 000 znaků; u publikovaného povinný, koncept smí být prázdný</td><td>Publikovaný článek musí mít text.</td></tr>
+    <tr><td><code>category_id</code></td><td>musí existovat</td><td>Vyberte rubriku.</td></tr>
+    <tr><td><code>tags[]</code></td><td>každý štítek musí existovat</td><td>Vybraný štítek neexistuje.</td></tr>
+    <tr><td><code>status</code></td><td><code>draft</code>, <code>published</code> nebo <code>archived</code></td><td>Vyberte stav článku.</td></tr>
+    <tr><td><code>published_at</code></td><td>skutečné datum a čas</td><td>Zadejte platné datum a čas publikace.</td></tr>
+    <tr><td>libovolné pole</td><td>platné UTF-8</td><td>Pole obsahuje neplatné znaky.</td></tr>
+  </table></div>
+  <p>Datum se po načtení znovu naformátuje a porovná s původním řetězcem. Tak se odmítne třeba
+  <code>2026-02-30T10:00</code>, které by PHP jinak tiše posunulo na březen. Publikovaný článek bez data se
+  publikuje „teď“ (čas z hodin, zaokrouhlený na minuty). Budoucí datum je platné a vznikne naplánovaný článek,
+  který veřejnost uvidí až po tomto čase (viz M4).</p>
+  <p>Chyby doletí do controlleru jako výjimka <code>InvalidArticleInput</code> s polem <code>pole => zpráva</code>. Controller
+  vykreslí formulář znovu se stavem <strong>422</strong>, zachovanými hodnotami (escapovanými) a chybou u každého
+  pole. Pole má <code>aria-invalid="true"</code> a <code>aria-describedby</code> na text chyby, aby je přečetl i
+  odečítač obrazovky.</p>
+
+  <h3>Krok 4 – PRG a flash zpráva</h3>
+  <p>Po úspěšném POST se nevrací stránka, ale <strong>přesměrování 303</strong> na GET adresu. Tomu se říká
+  <strong>PRG</strong> (Post/Redirect/Get). Kdyby POST vracel rovnou HTML a admin stiskl F5, prohlížeč by nabídl
+  „odeslat formulář znovu“ a založil by druhý článek. Po přesměrování F5 jen znovu načte stránku s formulářem.</p>
+  <p>Jak ale po přesměrování ukázat „Článek byl vytvořen.“? Zprávu si na chvíli pamatuje session. Třída
+  <code>Flash</code> (<code>src/Http/Session/Flash.php</code>) ji uloží a při prvním čtení smaže:</p>
+  <pre><code>$this->flash->set('Článek byl vytvořen.');
+return Response::redirect(self::editPath($id));   // 303 → /admin/clanky/{id}/upravit
+
+// při vykreslení další stránky:
+'flash' => $this->flash->pull(),   // přečte a smaže → po obnovení stránky zpráva zmizí</code></pre>
+  <p>Po vytvoření i úpravě míříš zpět na stránku úprav (admin obvykle pokračuje v práci), po smazání na seznam.
+  Stejnou třídu používá od M5 i přihlášení.</p>
+
+  <h3>Krok 5 – Uložení: transakce a čas z <code>Clock</code></h3>
+  <p><code>CreateArticle::handle()</code> dělá vždy stejné čtyři kroky: validace, unikátní slug, uložení, audit.
+  Uložení článku a jeho štítků běží v jedné <strong>transakci</strong>. Buď se uloží obojí, nebo nic, takže nikdy
+  nevznikne článek s polovinou štítků. Štítky se vkládají jedním vícehodnotovým <code>INSERT</code>, ne jedním
+  dotazem na štítek.</p>
+  <p><code>created_at</code> a <code>updated_at</code> zapisuje repozitář <strong>explicitně z <code>Clock</code></strong>.
+  Důvod znáš z M4: PHP běží v <code>Europe/Prague</code>, MariaDB v UTC a výchozí hodnoty
+  <code>CURRENT_TIMESTAMP</code> ve schématu by byly o 1–2 hodiny jinde. Explicitní hodnota v <code>UPDATE</code>
+  přebije i <code>ON UPDATE CURRENT_TIMESTAMP</code>. Autora (<code>created_by</code>, <code>updated_by</code>) i časy
+  plní server, nikdy formulář, takže je nejde podvrhnout.</p>
+  <aside class="tip"><strong>Známá nedokonalost.</strong> Seedované články mají čas z databáze (UTC), takže se
+  v „Naposledy upraveno“ liší o 1–2 hodiny od článků vytvořených přes administraci. Stejně je na tom
+  <code>audit_log.created_at</code>. Sjednotí se, až přijde výpis auditu.</aside>
+
+  <h3>Krok 6 – Audit akcí <code>article.*</code></h3>
+  <p>Po úspěšném uložení use-case zapíše do <code>audit_log</code> jeden záznam. Akce jsou tři:
+  <code>article.created</code>, <code>article.updated</code> a <code>article.deleted</code>. V <code>summary</code> je
+  titulek a slug ve tvaru <code>Nový článek [novy-clanek]</code>, v <code>entity_id</code> ID článku. Audit se zapisuje
+  <strong>až po</strong> uložení a mimo transakci článku. Sdílet transakci mezi dvěma repozitáři by chtělo novou
+  abstrakci, a tu zatím nepotřebujeme. Cena: kdyby zápis auditu selhal, článek už je uložen a admin uvidí chybu 500.
+  Pro tuto fázi je to vědomý kompromis.</p>
+
+  <h3>Krok 7 – Proč tvrdé mazání a potvrzení přes POST</h3>
+  <p>Smazání je skutečné <code>DELETE</code>. Štítky článku zmizí kaskádou z <code>article_tags</code> a záznam
+  v <code>audit_log</code> nemá cizí klíč na článek, takže přežije. Proto se do <code>summary</code> ukládá <strong>kopie
+  titulku a slugu</strong>: po smazání už by je jinak nikde nebylo vidět. Koš (obnovení smazaného) by vyžadoval sloupec
+  <code>deleted_at</code>, migraci a úpravu všech veřejných dotazů. Pro tuto aplikaci to nestojí za složitost, ale smazání je
+  nevratné, takže si ho aplikace vyžádá potvrzením.</p>
+  <p>Potvrzení je samostatná stránka <code>GET /admin/clanky/{id}/smazat</code> s formulářem
+  (<code>templates/admin/articles/delete.php</code>). <strong>GET nikdy nic nemaže</strong>. Kdyby mazal, stačil by
+  přihlášenému adminovi odkaz v cizím e-mailu, nebo by smazání spustil prefetch prohlížeče či robot. Maže až
+  <code>POST</code> z tlačítka „Smazat článek“.</p>
+
+  <h3>Krok 8 – Role CSRF</h3>
+  <p>Všechny tři POST akce chrání <code>CsrfMiddleware</code> z M3. Každý formulář nese skrytý <code>_csrf</code> přes
+  <code>csrf_field($csrfToken)</code>. Bez platného tokenu odpoví server <code>403</code>, a to dřív, než se zkoumá
+  přihlášení. Proč na tom záleží: prohlížeč s cookie přihlášeného admina ji pošle i z cizí stránky. Cizí web tedy může
+  přimět tvůj prohlížeč odeslat <code>POST /admin/clanky/5/smazat</code>. Token zná jen skutečný formulář vygenerovaný
+  naším serverem, takže padělaný požadavek neprojde.</p>
+
+  <h3>Krok 9 – Seznam, stránkování a náhled</h3>
+  <ul>
+    <li><strong>Seznam</strong> řadí <code>updated_at DESC, id DESC</code> a jedním dotazem s <code>JOIN</code> načte
+    rubriku i jméno toho, kdo článek naposledy změnil (žádné N+1). Stav „Naplánováno“ se odvodí z publikovaného
+    článku s budoucím datem. Po 20 článcích je stránkování <code>?strana=N</code> přes sdílenou třídu
+    <code>Http\PageNumber</code>, kterou používá i titulní stránka.</li>
+    <li><strong>Náhled</strong> na stránce úprav vykreslí <em>uloženou</em> verzi textu přes
+    <code>MarkdownRenderer</code> (stejný bezpečný renderer jako veřejný web). Živý náhled při psaní by chtěl JavaScript.</li>
+    <li><strong>Escapování:</strong> titulek, jméno redaktora i vrácené hodnoty po chybě se vypisují přes
+    <code>e()</code>. Jediná výjimka je <code>$previewHtml</code> (výstup sanitizujícího rendereru).</li>
+  </ul>
+
+  <h3>Spusť to</h3>
+  <p>Prostředí musí běžet (<code>make up</code>), schéma i seed být nahrané a existovat admin z README
+  (<code>admin@example.cz</code>). Nejdřív ověř, že bez přihlášení se do správy nedostaneš:</p>
+  <pre><code>curl -s http://localhost:8080/admin/clanky -D - -o /dev/null
+HTTP/1.1 303 See Other
+...
+Location: /admin/prihlaseni
+
+curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/clanky/novy
+303
+curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/clanky/1/upravit
+303
+curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/clanky/1/smazat
+303
+
+curl -s -X POST http://localhost:8080/admin/clanky/1/smazat -o /dev/null -w '%{http_code}'
+403                          # bez tokenu CSRF, nic se nesmaže</code></pre>
+  <p>Teď to samé v prohlížeči (přihlášení a formuláře potřebují session cookie a token, v terminálu by to bylo zbytečně
+  pracné):</p>
+  <ol class="kroky">
+    <li>Otevři <a href="http://localhost:8080/admin/prihlaseni">localhost:8080/admin/prihlaseni</a> a přihlas se účtem
+    z README (<code>admin@example.cz</code>).</li>
+    <li>V rozcestníku klikni na „Články“ (<code>/admin/clanky</code>). Uvidíš všech 16 seedovaných článků včetně konceptů,
+    archivu a naplánovaného.</li>
+    <li>Klikni na „Nový článek“ a rovnou odešli prázdný formulář. Dostaneš chyby „Vyplňte titulek.“ a „Vyberte rubriku.“
+    u polí.</li>
+    <li>Vyplň titulek, vyber rubriku, stav „Publikováno“, datum nech prázdné a ulož. Skončíš na stránce úprav
+    s hláškou „Článek byl vytvořen.“. Stiskni F5: hláška zmizí a nic se nezdvojí.</li>
+    <li>Založ druhý článek se stejným titulkem. Jeho slug bude mít příponu <code>-2</code>.</li>
+    <li>U druhého článku zvol „Smazat článek“, na potvrzovací stránce znovu „Smazat článek“. V seznamu je hláška
+    „Článek „…“ byl smazán.“.</li>
+  </ol>
+  <p>Zápisy v auditu uvidíš v Admineru (<a href="http://localhost:8081">localhost:8081</a>) dotazem
+  <code>SELECT action, entity_id, summary FROM audit_log ORDER BY id DESC LIMIT 4</code>.</p>
+  <p>Pozor: tímto postupem vzniká v tvé databázi první článek, který <code>make seed</code> nesmaže ani nepřepíše.</p>
+
+  <aside class="korektura"><strong>Co v M5 chybí.</strong>
+    <ul>
+      <li>Správa rubrik a štítků (přidat, přejmenovat, smazat). Ve formuláři se jen vybírají ze seedu. Naplánováno jako M5b.</li>
+      <li>Živý náhled Markdownu. Je jen náhled uložené verze.</li>
+      <li>Koš a obnovení smazaných článků. Smazání je nevratné.</li>
+      <li>Hledání a filtrování v seznamu, řazení podle sloupců a hromadné akce.</li>
+      <li>Přesměrování ze starých slugů a ochrana proti souběžné úpravě téhož článku (vyhrává poslední uložení).</li>
+    </ul></aside>
+
+  <h3>Bezpečnost</h3>
+  <ul>
+    <li>Přístup: celé <code>/admin/clanky/*</code> je za <code>AdminAccessMiddleware</code> a controller kontroluje přihlášení ještě jednou.</li>
+    <li>CSRF: tři POST akce vyžadují token, mazání nikdy neběží přes GET.</li>
+    <li>XSS: výpisy přes <code>e()</code>, náhled jen přes <code>MarkdownRenderer</code>.</li>
+    <li>Podvržená pole: use-case bere jen pojmenovaná pole, autora a časy doplňuje server. Neexistující rubrika nebo štítek je chyba validace, ne chyba cizího klíče z databáze.</li>
+    <li>SQL: jen prepared statements; <code>LIMIT</code> a <code>OFFSET</code> jako celá čísla.</li>
+    <li>Velikost vstupu: text max. 100 000 znaků ověřuje server, ne jen <code>maxlength</code>.</li>
+  </ul>
+
+  <h3>Jak to postavili agenti</h3>
+  <p>Plán <code>docs/plan/005-sprava-clanku.md</code> napsal <code>architekt</code> a člověk ho schválil na bráně 1,
+  včetně sedmi otázek (například tvrdé mazání nebo audit mimo transakci). <code>tester</code> psal testy napřed,
+  <code>programator</code> postavil nejdřív vrstvu bez HTTP (doména, use-case, repozitáře) a pak HTTP část. Schéma
+  databáze se nezměnilo, takže <code>databazista</code> nebyl potřeba. Bezpečnostní revize v tomto milníku
+  nebyla (výukový režim).</p>
+
+  <h3>Vyzkoušej sám</h3>
+  <ol class="kroky">
+    <li>Vytvoř článek s titulkem <code>Žluťoučký kůň</code>. Jaký dostane slug? Pak ho uprav a změň titulek. Změní se slug a proč ne?</li>
+    <li>Nastav stav „Publikováno“ a datum o týden dopředu. Jaký stav ukáže seznam a uvidí článek návštěvník na <code>/</code>?</li>
+    <li>V nástrojích prohlížeče změň <code>type</code> pole pro datum na <code>text</code> a napiš <code>2026-02-30T10:00</code>. Co hlásí server?</li>
+  </ol>
+
+  <details class="kviz"><summary>Kvíz (3 otázky)</summary>
+    <p>1. Proč se po uložení formuláře dělá přesměrování 303 místo přímého vykreslení stránky?</p>
+    <details><summary>Odpověď</summary><p>Aby F5 neodeslal formulář podruhé (PRG). Po přesměrování obnovení stránky jen znovu načte GET. Zprávu o úspěchu si přenese flash v session.</p></details>
+    <p>2. Proč potvrzení smazání nemaže už při GET a proč musí mít formulář token CSRF?</p>
+    <details><summary>Odpověď</summary><p>GET smí vyvolat odkaz, obrázek nebo prefetch bez vědomí admina. Maže jen POST. Token zajistí, že POST odeslal skutečný formulář z našeho webu, ne cizí stránka využívající cookie přihlášeného admina.</p></details>
+    <p>3. Do <code>audit_log</code> se při smazání ukládá kopie titulku a slugu. Proč nestačí jen ID článku?</p>
+    <details><summary>Odpověď</summary><p>Smazáním článek zmizí a z ID se už nedá zjistit, co to bylo. Audit nemá cizí klíč, takže záznam přežije, a kopie v <code>summary</code> řekne, co se smazalo.</p></details>
+  </details>
+
+  <dl class="slovnicek">
+    <dt>Audit</dt><dd>Záznam o tom, kdo, kdy a co udělal. Akce se zapisují do <code>audit_log</code> (<code>article.created</code>, <code>article.updated</code>, <code>article.deleted</code>).</dd>
+    <dt>Flash zpráva</dt><dd>Jednorázová zpráva uložená v session, která se ukáže na další stránce a po přečtení zmizí.</dd>
+    <dt>PRG</dt><dd>Post/Redirect/Get: po úspěšném POST server odpoví přesměrováním na GET adresu, aby obnovení stránky neodeslalo formulář znovu.</dd>
+    <dt>Use-case</dt><dd>Třída, která řeší jeden úkol aplikace (vytvoř článek, smaž článek) a řídí pořadí kroků: validace, uložení, audit. Neví nic o HTTP ani o SQL.</dd>
+    <dt>Validace</dt><dd>Kontrola, zda vstup splňuje pravidla. Rozhoduje server; kontroly v HTML (<code>required</code>, <code>maxlength</code>) jsou jen nápověda.</dd>
+  </dl>
+  <!-- AGENT: kapitola M5 -->
+</section>
+
 <section class="kapitola" id="architektura">
   <h2>Architektura aplikace</h2>
   <div class="zastupny">Doplní agent podle <code>docs/architektura.md</code> po milníku M2.</div>
@@ -1209,7 +1455,11 @@ crontab -e
     <dt>Brána (gate)</dt><dd>Místo v procesu, kde se čeká na rozhodnutí člověka.</dd>
     <dt>Environment (GitHub)</dt><dd>Pojmenované cílové prostředí s vlastními secrets a pravidly schvalování nasazení.</dd>
     <dt>GHCR</dt><dd>GitHub Container Registry — úložiště Docker obrazů vedle repozitáře.</dd>
-    <dt>Audit (audit log)</dt><dd>Tabulka <code>audit_log</code>, do které aplikace zapisuje, kdo, kdy a co udělal (přihlášení, odhlášení, vytvoření účtu). Slouží k dohledání, co se stalo.</dd>
+    <dt>Flash zpráva</dt><dd>Jednorázová zpráva uložená v session, která se ukáže na další stránce a po přečtení zmizí.</dd>
+    <dt>PRG</dt><dd>Post/Redirect/Get: po úspěšném POST server odpoví přesměrováním (303) na GET adresu, aby obnovení stránky neodeslalo formulář znovu.</dd>
+    <dt>Use-case</dt><dd>Třída, která řeší jeden úkol aplikace (vytvoř článek, smaž článek) a řídí pořadí kroků. Neví nic o HTTP ani o SQL.</dd>
+    <dt>Validace</dt><dd>Kontrola, zda vstup splňuje pravidla. Rozhoduje server; <code>required</code> a <code>maxlength</code> v HTML jsou jen nápověda.</dd>
+    <dt>Audit (audit log)</dt><dd>Tabulka <code>audit_log</code>, do které aplikace zapisuje, kdo, kdy a co udělal (přihlášení, odhlášení, vytvoření účtu, vytvoření, úprava a smazání článku). Slouží k dohledání, co se stalo.</dd>
     <dt>Cizí klíč</dt><dd>Sloupec odkazující na řádek jiné tabulky. Hlídá, aby odkaz nevisel do prázdna.</dd>
     <dt>Cookie</dt><dd>Malý text, který si prohlížeč uloží od serveru a posílá mu ho zpět s každým dalším požadavkem. Session cookie nese jen číslo session.</dd>
     <dt>CSRF</dt><dd>Útok, při kterém cizí web přiměje prohlížeč přihlášeného uživatele odeslat formulář na tvou stránku. Brání mu tajný token, který zná jen tvůj formulář.</dd>

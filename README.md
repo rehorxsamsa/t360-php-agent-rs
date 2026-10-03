@@ -41,6 +41,8 @@ služby zdravé. Další cíle vypíše `make help`.
 | Kontrola zdraví | <http://localhost:8080/zdravi> |
 | Administrace (jen přihlášený admin) | <http://localhost:8080/admin> |
 | Přihlášení do administrace | <http://localhost:8080/admin/prihlaseni> |
+| Správa článků (seznam, úprava, smazání) | <http://localhost:8080/admin/clanky> |
+| Nový článek | <http://localhost:8080/admin/clanky/novy> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
@@ -89,7 +91,7 @@ a pro vývoj stačí. Chceš-li začít znovu s novými hesly, smaž volume: `ma
 |---|---|
 | `src/`, `public/`, `tests/` | aplikace, front controller, testy |
 | `config/` | kompoziční kořen: `container.php` (kontejner), `routes.php` (trasy) |
-| `templates/` | PHP šablony (`layout`, `home`, `article`, `error`, `admin/`), výstup přes `e()` |
+| `templates/` | PHP šablony (`layout`, `home`, `article`, `error`, `admin/`, `admin/articles/`), výstup přes `e()` |
 | `database/seeds/` | ukázková data (`demo_content.php`), nahrává je `make seed` |
 | `database/migrations/` | migrace schématu (`RRRRMMDDHHMM_popis.php`) |
 | `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed` |

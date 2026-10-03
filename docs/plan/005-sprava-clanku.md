@@ -1,5 +1,5 @@
 # 005 – Administrace článků: seznam, vytvoření, úprava, smazání s auditem
-Stav: návrh
+Stav: hotovo
 
 - **Milník:** M5 (zúžený rozsah, příběhy 5–7 zadání; příběh 8 = správa rubrik a štítků → **M5b**) ·
   **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP, bez kola security review
