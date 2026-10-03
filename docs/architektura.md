@@ -1,12 +1,12 @@
 # Architektura — Redakční systém (t360)
 
-> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plány 001–003, M1–M3 — hotovo;
-> plán 004 M4 veřejná část — implementováno, čeká na schválení na bráně 2).
+> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plány 001–004, M1–M4 — hotovo;
+> plán 005 M5 administrace článků — návrh, čeká na bránu 1).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
 > [ADR-0004](adr/0004-anglicke-nazvy-v-databazi.md) anglické názvy v DB ·
-> [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer (navrženo).
+> [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer.
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -26,20 +26,20 @@ flowchart LR
         K[Kernel] --> MW["MiddlewarePipeline<br/>M3 (plán 003): SecurityHeaders → ErrorHandler<br/>→ Routing → Csrf → AdminAccess"]
         MW --> RT["RoutingMiddleware<br/>Router::match"]
         RT --> C["Controller"]
-        S["Session (líná služba)<br/>CsrfToken, AuthSession"] -.-> MW
+        S["Session (líná služba)<br/>CsrfToken, AuthSession, Flash (M5)"] -.-> MW
         C --> V["TemplateRenderer + e()<br/>templates/*.php<br/>MarkdownRenderer, czech_date (M4)"]
     end
     subgraph Con["App\\Console (M2)"]
         CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)"]
     end
     subgraph App["App\\Application — use-cases"]
-        UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)"]
+        UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)"]
     end
     subgraph Dom["App\\Domain — entity, VO, rozhraní repozitářů"]
-        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)"]
+        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
     end
     subgraph Inf["App\\Infrastructure — PDO, migrace, config"]
-        R["Pdo*Repository (vč. PdoArticleRepository M4)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
+        R["Pdo*Repository (vč. PdoArticleRepository M4,<br/>PdoArticleAdminRepository, PdoCategory/TagRepository M5)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
         MG["Migration\\Migrator<br/>PdoMigrationRepository<br/>database/migrations/*.php<br/>Seed + database/seeds/*.php (M4)"]
     end
     subgraph Ai["App\\Ai (M6+)"]
@@ -76,6 +76,15 @@ vrací read modely (`ArticleSummary` s rubrikou přes `JOIN`, `ArticleDetail` + 
 stejně jako neexistující trasu. Markdown → HTML jen přes `Http\View\MarkdownRenderer` (ADR-0005, jediný
 výpis bez `e()` mimo `layout.php`). Seed (`db:seed`) je soubor `database/seeds/demo_content.php` vracející
 objekt s rozhraním `Infrastructure\Seed\Seed` — obdoba migrací; běží jako `redakce_app`, nic nemaže.
+
+M5 (plán 005, návrh) — administrace článků jde `Admin\ArticleController → CreateArticle / UpdateArticle /
+DeleteArticle, AdminArticles (Application) → ArticleAdminRepository, CategoryRepository, TagRepository,
+AuditLogRepository (Domain) ← Pdo*`. Administrace má **vlastní rozhraní repozitáře** (všechny stavy + zápis),
+veřejné `ArticleRepository` zůstává jen pro publikované. Validace formuláře je v `ArticleInputValidator`
+(Application, české chyby → `InvalidArticleInput` → 422), slug počítají čisté funkce `Slug::fromText`
+a `Slug::uniqueAmong` nad jedním dotazem `takenSlugs`. Článek a jeho štítky se ukládají v transakci
+repozitáře, audit `article.*` až po ní. `created_at`/`updated_at` zapisuje repozitář z `Clock` (výchozí
+hodnoty DB jsou v UTC). Admin URL používají ID (`/admin/clanky/{id}/upravit`), PRG + `Http\Session\Flash`.
 
 ## 2. Běhové prostředí (dev, `compose.yaml`, projekt `t360`)
 Hostitel má jen `docker`, `git`, `bash`, `jq` (+ `make`, `curl` — čeká na schválení). Žádné PHP ani Node.
