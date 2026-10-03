@@ -6,7 +6,11 @@
 ?>
 <h1>Administrace</h1>
 <p>Přihlášen(a) jako <?= e($userName) ?></p>
-<p>Správa článků přibude v dalším milníku.</p>
+<nav aria-label="Správa obsahu">
+    <ul>
+        <li><a href="/admin/clanky">Články</a></li>
+    </ul>
+</nav>
 <form method="post" action="/admin/odhlaseni">
     <?= csrf_field($csrfToken) ?>
     <p><button type="submit">Odhlásit se</button></p>

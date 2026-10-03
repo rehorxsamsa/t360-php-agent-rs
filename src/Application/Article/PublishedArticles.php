@@ -6,6 +6,7 @@ namespace App\Application\Article;
 
 use App\Domain\Article\ArticleDetail;
 use App\Domain\Article\ArticleRepository;
+use App\Domain\Article\ArticleSummary;
 use App\Domain\Article\Slug;
 use App\Domain\Time\Clock;
 
@@ -19,7 +20,7 @@ final readonly class PublishedArticles
         private Clock $clock,
     ) {}
 
-    /** @return ArticlePage|null null, když stránka neexistuje (mimo rozsah); prázdný výpis je platná strana 1 */
+    /** @return ArticlePage<ArticleSummary>|null null, když stránka neexistuje (mimo rozsah); prázdný výpis je platná strana 1 */
     public function page(int $page): ?ArticlePage
     {
         $now = $this->clock->now();

@@ -9,9 +9,12 @@ use App\Console\Command\RollbackCommand;
 use App\Console\Command\SeedCommand;
 use App\Console\ConsoleApplication;
 use App\Container\Container;
+use App\Domain\Article\ArticleAdminRepository;
 use App\Domain\Article\ArticleRepository;
 use App\Domain\Audit\AuditLogRepository;
+use App\Domain\Category\CategoryRepository;
 use App\Domain\Health\DatabaseHealth;
+use App\Domain\Tag\TagRepository;
 use App\Domain\Time\Clock;
 use App\Domain\User\UserRepository;
 use App\Http\Middleware\AdminAccessMiddleware;
@@ -27,9 +30,12 @@ use App\Infrastructure\Config\DatabaseConfig;
 use App\Infrastructure\Migration\Migrator;
 use App\Infrastructure\Migration\PdoMigrationRepository;
 use App\Infrastructure\Persistence\ConnectionFactory;
+use App\Infrastructure\Persistence\PdoArticleAdminRepository;
 use App\Infrastructure\Persistence\PdoArticleRepository;
 use App\Infrastructure\Persistence\PdoAuditLogRepository;
+use App\Infrastructure\Persistence\PdoCategoryRepository;
 use App\Infrastructure\Persistence\PdoDatabaseHealthRepository;
+use App\Infrastructure\Persistence\PdoTagRepository;
 use App\Infrastructure\Persistence\PdoUserRepository;
 use App\Infrastructure\Session\NativeSession;
 use App\Infrastructure\Time\SystemClock;
@@ -70,6 +76,22 @@ $container->set(
 $container->set(
     ArticleRepository::class,
     static fn(Container $c): ArticleRepository => new PdoArticleRepository($c->get(\PDO::class)),
+);
+
+// Administrace článků (všechny stavy) má vlastní rozhraní, veřejné čtení zůstává jen pro publikované.
+$container->set(
+    ArticleAdminRepository::class,
+    static fn(Container $c): ArticleAdminRepository => new PdoArticleAdminRepository($c->get(\PDO::class)),
+);
+
+$container->set(
+    CategoryRepository::class,
+    static fn(Container $c): CategoryRepository => new PdoCategoryRepository($c->get(\PDO::class)),
+);
+
+$container->set(
+    TagRepository::class,
+    static fn(Container $c): TagRepository => new PdoTagRepository($c->get(\PDO::class)),
 );
 
 $container->set(Clock::class, static fn(): Clock => new SystemClock());

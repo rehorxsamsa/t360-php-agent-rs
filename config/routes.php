@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controller\Admin\ArticleController as AdminArticleController;
 use App\Http\Controller\Admin\DashboardController;
 use App\Http\Controller\Admin\LoginController;
 use App\Http\Controller\ArticleController;
@@ -20,4 +21,11 @@ return static function (Router $router): void {
     $router->post('/admin/prihlaseni', [LoginController::class, 'login']);
     $router->post('/admin/odhlaseni', [LoginController::class, 'logout']);
     $router->get('/admin', [DashboardController::class, 'index']);
+    $router->get('/admin/clanky', [AdminArticleController::class, 'index']);
+    $router->get('/admin/clanky/novy', [AdminArticleController::class, 'create']);
+    $router->post('/admin/clanky/novy', [AdminArticleController::class, 'store']);
+    $router->get('/admin/clanky/{id}/upravit', [AdminArticleController::class, 'edit']);
+    $router->post('/admin/clanky/{id}/upravit', [AdminArticleController::class, 'update']);
+    $router->get('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'confirmDelete']);
+    $router->post('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'delete']);
 };

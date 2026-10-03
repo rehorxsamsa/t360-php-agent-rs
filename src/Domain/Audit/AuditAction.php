@@ -11,4 +11,7 @@ enum AuditAction: string
     case LoginFailed = 'auth.login_failed';
     case Logout = 'auth.logout';
     case UserCreated = 'user.created';
+    case ArticleCreated = 'article.created';
+    case ArticleUpdated = 'article.updated';
+    case ArticleDeleted = 'article.deleted';
 }

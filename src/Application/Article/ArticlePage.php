@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Application\Article;
 
-use App\Domain\Article\ArticleSummary;
-
-/** Jedna stránka výpisu publikovaných článků. */
+/**
+ * Jedna stránka výpisu článků (veřejný výpis i seznam v administraci).
+ *
+ * @template T of object
+ */
 final readonly class ArticlePage
 {
-    /** @param list<ArticleSummary> $articles */
+    /** @param list<T> $articles */
     public function __construct(
         public array $articles,
         public int $page,

@@ -9,19 +9,17 @@ use App\Http\Auth\AuthSession;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\Security\CsrfToken;
-use App\Http\Session\Session;
+use App\Http\Session\Flash;
 use App\Http\View\TemplateRenderer;
 
 final readonly class LoginController
 {
-    private const string FLASH_KEY = 'flash';
-
     public function __construct(
         private TemplateRenderer $renderer,
         private AdminAuthenticator $authenticator,
         private AuthSession $auth,
         private CsrfToken $csrf,
-        private Session $session,
+        private Flash $flash,
     ) {}
 
     public function show(Request $request): Response
@@ -56,21 +54,19 @@ final readonly class LoginController
 
         $this->authenticator->recordLogout($user, $request->clientIp);
         $this->auth->signOut();
-        $this->session->set(self::FLASH_KEY, 'Byli jste odhlášeni.');
+        $this->flash->set('Byli jste odhlášeni.');
 
         return Response::redirect('/admin/prihlaseni');
     }
 
     private function form(int $status, string $email, string $error): Response
     {
-        $flash = $this->session->pull(self::FLASH_KEY);
-
         return Response::html($this->renderer->render('admin/login', [
             'title' => 'Přihlášení do administrace',
             'csrfToken' => $this->csrf->token(),
             'email' => $email,
             'error' => $error,
-            'flash' => $flash === null ? '' : (string) $flash,
+            'flash' => $this->flash->pull(),
         ]), $status);
     }
 }

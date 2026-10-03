@@ -18,7 +18,7 @@
 <?php endforeach; ?>
 <nav aria-label="Stránkování" class="pagination">
 <?php if ($page->hasPrevious()) : ?>
-    <a href="<?= $page->page === 2 ? '/' : '/?strana=' . e_attr($page->page - 1) ?>" rel="prev">Novější články</a>
+    <a href="<?= e_attr($page->page === 2 ? '/' : '/?strana=' . ($page->page - 1)) ?>" rel="prev">Novější články</a>
 <?php endif; ?>
     <span aria-current="page">Strana <?= e($page->page) ?> z <?= e($page->totalPages) ?></span>
 <?php if ($page->hasNext()) : ?>

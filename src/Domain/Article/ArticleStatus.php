@@ -9,4 +9,14 @@ enum ArticleStatus: string
     case Draft = 'draft';
     case Published = 'published';
     case Archived = 'archived';
+
+    /** Český popisek stavu pro administraci. */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Draft => 'Koncept',
+            self::Published => 'Publikováno',
+            self::Archived => 'Archiv',
+        };
+    }
 }
