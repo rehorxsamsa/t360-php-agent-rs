@@ -25,6 +25,7 @@ cd redakcni-system
 git config core.hooksPath .githooks   # git hooky (formát commitu, kontrola PHP)
 make up                               # .env, sestavení obrazů, composer install, start služeb
 make qa                               # php -l, PHP-CS-Fixer, PHPStan, PHPUnit, composer audit
+make migrate                          # vytvoří databázové schéma (migrace z database/migrations/)
 make mcp                              # jednorázově předstáhne obrazy MCP serverů (Playwright, MariaDB)
 ```
 
@@ -33,11 +34,15 @@ služby zdravé. Další cíle vypíše `make help`.
 
 | Co | Adresa |
 |---|---|
-| Aplikace (kontrola zdraví) | <http://localhost:8080/zdravi> |
+| Aplikace (titulní stránka) | <http://localhost:8080/> |
+| Kontrola zdraví | <http://localhost:8080/zdravi> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
 serverem `db`, uživatelem `redakce_app` a heslem `DB_PASSWORD` z `.env`.
+
+Testy: `make test` (nebo `make qa`). Integrační testy schématu mažou a znovu vytvářejí tabulky
+v databázi `redakce_test`, proto dvě sady testů nesmí běžet paralelně nad `redakce_test`.
 
 Zastavení prostředí: `make down`. Data databáze zůstanou v Docker volume `t360_db_data`.
 
@@ -64,6 +69,10 @@ a pro vývoj stačí. Chceš-li začít znovu s novými hesly, smaž volume: `ma
 | Cesta | Obsah |
 |---|---|
 | `src/`, `public/`, `tests/` | aplikace, front controller, testy |
+| `config/` | kompoziční kořen: `container.php` (kontejner), `routes.php` (trasy) |
+| `templates/` | PHP šablony (`layout`, `home`, `error`), výstup přes `e()` |
+| `database/migrations/` | migrace schématu (`RRRRMMDDHHMM_popis.php`) |
+| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav` |
 | `docker/`, `compose.yaml`, `Makefile` | prostředí v Dockeru |
 | `.claude/`, `.mcp.json`, `.githooks/` | tým agentů, hooky, MCP servery |
 | `docs/` | zadání, architektura, ADR, plány, tutoriál |

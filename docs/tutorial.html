@@ -99,6 +99,7 @@ ol.kroky{padding-left:1.4rem} ol.kroky > li{margin:.4rem 0}
     <li><a href="#jak-cist">Jak číst tento tutoriál</a></li>
     <li><a href="#tym">Tým agentů a jak pracuje</a></li>
     <li><a href="#spusteni">Spuštění na svém počítači</a></li>
+    <li><a href="#m2">Router, kontejner, šablony a migrace</a></li>
     <li><a href="#architektura">Architektura aplikace</a></li>
     <li><a href="#bezpecnost">Bezpečnost v kódu</a></li>
     <li><a href="#ai-01">AI 01 · Perex na jedno kliknutí</a></li>
@@ -275,6 +276,175 @@ redakce_test	utf8mb4_czech_ci</code></pre>
     (<code>docker volume ls -q --filter name=t360_db_data</code>).</li>
   </ol>
   <!-- AGENT: kapitola spuštění -->
+</section>
+
+<section class="kapitola" id="m2">
+  <h2>Router, kontejner, šablony a migrace</h2>
+  <p class="cil">Milník M2: aplikace dostane první HTML stránku, srozumitelné chybové stránky a databázové
+  schéma. Novou stránku přidáš jedním řádkem v tabulce tras a závislosti ti složí kontejner.</p>
+
+  <h3>Jak to funguje</h3>
+  <pre class="mermaid">
+flowchart LR
+  I[public/index.php] --> DI[config/container.php<br/>Container]
+  DI --> K[Kernel]
+  K --> E[ErrorHandlerMiddleware]
+  E --> R[Router::match]
+  R --> C[Controller]
+  C --> T[TemplateRenderer<br/>templates/*.php]
+  </pre>
+  <p>Požadavek projde řetězem middleware, router najde controller, kontejner ho sestaví a
+  controller vrátí odpověď. Chybí-li stránka nebo selže kód, výjimku zachytí nejvnější
+  middleware a zobrazí chybovou stránku.</p>
+
+  <h3>Krok 1 – Router</h3>
+  <p>Tabulka tras je v <code>config/routes.php</code>. Nová stránka = jeden řádek:</p>
+  <pre><code>$router->get('/', [HomeController::class, 'index']);
+$router->get('/zdravi', [HealthController::class, '__invoke']);</code></pre>
+  <p><code>Router::match()</code> (<code>src/Http/Routing/Router.php</code>) porovná metodu a cestu.
+  Cesta musí sedět přesně, <code>/zdravi/</code> s lomítkem už je 404. Část <code>{slug}</code>
+  odpovídá jednomu segmentu. Cesta existuje, ale pro jinou metodu? Pak výjimka
+  <code>MethodNotAllowed</code> se seznamem povolených metod.</p>
+
+  <h3>Krok 2 – DI kontejner</h3>
+  <p>Controller si závislosti neskládá sám, žádá je v konstruktoru. <code>Container</code>
+  (<code>src/Container/Container.php</code>) je sestaví podle typů parametrů (autowiring přes reflexi)
+  a každou třídu vytvoří jen jednou. U rozhraní nemá odkud znát implementaci, tu mu řekneš
+  v <code>config/container.php</code>:</p>
+  <pre><code>$container->set(
+    DatabaseHealth::class,
+    static fn(Container $c): DatabaseHealth => $c->get(PdoDatabaseHealthRepository::class),
+);</code></pre>
+  <p>Továrna je líná: poběží až při prvním <code>get()</code>. Web proto nikdy nesáhne na migrační
+  heslo, to potřebuje jen <code>Migrator</code> v konzoli. Cyklus A → B → A skončí výjimkou
+  <code>ContainerException</code>, ne nekonečnou smyčkou.</p>
+
+  <h3>Krok 3 – Middleware</h3>
+  <p>Middleware je vrstva kolem controlleru. <code>MiddlewarePipeline</code> je skládá jako cibuli:
+  první v seznamu je nejvnější. Zatím je jediná, <code>ErrorHandlerMiddleware</code>:
+  <code>RouteNotFound</code> změní na 404, <code>MethodNotAllowed</code> na 405 s hlavičkou
+  <code>Allow</code> a cokoli jiného na 500. Podrobnosti chyby jdou jen do <code>error_log</code>
+  (<code>docker compose logs app</code>), návštěvník je nikdy neuvidí. V M3 přibudou další vrstvy
+  (session, CSRF, přihlášení).</p>
+
+  <h3>Krok 4 – Šablony a funkce e()</h3>
+  <p><code>TemplateRenderer</code> vykreslí <code>templates/home.php</code> a vloží ji do
+  <code>templates/layout.php</code>. Šablona je obyčejné PHP. Každou proměnnou vypisuj přes
+  <code>e()</code>, jinak vznikne XSS:</p>
+  <pre><code>&lt;title&gt;&lt;?= e($title ?? '') ?&gt; · Redakční systém&lt;/title&gt;
+...
+&lt;?= $content /* už vykreslené HTML z šablony, ne vstup uživatele */ ?&gt;</code></pre>
+  <p><code>e()</code> (<code>src/Http/View/helpers.php</code>) je <code>htmlspecialchars</code> s příznaky
+  <code>ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5</code>. Jediný výpis bez <code>e()</code> je
+  <code>$content</code> v rozvržení, protože už je to hotové HTML. Název šablony smí obsahovat jen
+  <code>a-z</code>, číslice, <code>_</code>, <code>-</code> a <code>/</code>, takže
+  <code>../composer</code> skončí chybou <code>TemplateNotFound</code>.</p>
+
+  <h3>Krok 5 – Migrátor</h3>
+  <p>Schéma databáze se nevytváří ručně v Admineru, ale soubory v <code>database/migrations/</code>.
+  Název má tvar <code>RRRRMMDDHHMM_popis.php</code> a soubor vrací objekt s metodami
+  <code>up()</code> (provést) a <code>down()</code> (vrátit):</p>
+  <pre><code>return new class implements Migration {
+    public function up(\PDO $pdo): void { $pdo->exec('CREATE TABLE …'); }
+    public function down(\PDO $pdo): void { $pdo->exec('DROP TABLE IF EXISTS articles'); }
+};</code></pre>
+  <p><code>Migrator</code> spustí soubory podle názvu a provedené si zapisuje do tabulky
+  <code>migrations</code>. Žádné transakce: MariaDB u <code>CREATE TABLE</code> potvrdí změnu sama,
+  proto je jedna tabulka = jedna migrace. Migrace běží pod účtem <code>redakce_migrace</code>,
+  web pod <code>redakce_app</code>, který schéma měnit nesmí.</p>
+
+  <h3>Krok 6 – Schéma</h3>
+  <pre class="mermaid">
+erDiagram
+  users ||--o{ articles : "created_by, updated_by (SET NULL)"
+  users ||--o{ audit_log : "user_id (SET NULL)"
+  categories ||--o{ articles : "category_id (RESTRICT)"
+  articles ||--o{ article_tags : "CASCADE"
+  tags ||--o{ article_tags : "CASCADE"
+  </pre>
+  <p>Chování cizího klíče určuje, co se stane po smazání. Rubriku s články smazat nejde
+  (<code>RESTRICT</code>). Smazáním článku zmizí jeho řádky v <code>article_tags</code>
+  (<code>CASCADE</code>). Smazáním uživatele zůstanou články i audit, jen autor se nastaví na
+  <code>NULL</code> (<code>SET NULL</code>). Všechny tabulky jsou <code>InnoDB</code> s kolací
+  <code>utf8mb4_czech_ci</code>. Názvy tabulek a sloupců jsou anglicky (ADR-0004).</p>
+
+  <h3>Spusť to</h3>
+  <pre><code>make migrate
+Spuštěno: 202610030001_create_users_table
+Spuštěno: 202610030002_create_categories_table
+...
+Spuštěno: 202610030006_create_audit_log_table
+
+make migrate
+Žádné čekající migrace.
+
+docker compose exec -T app php bin/konzole migrace:stav
+[x] 202610030001_create_users_table (2026-10-03 09:42:29.307069)
+...</code></pre>
+  <p>Druhé spuštění nic nedělá, migrace se neopakují. Konzole umí ještě
+  <code>migrace:vrat --kroky=N</code> (vrátí posledních N migrací). Bez argumentu vypíše seznam příkazů.
+  Teď web:</p>
+  <pre><code>curl -s http://localhost:8080/ -D -
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Cache-Control: no-store
+...
+&lt;html lang="cs"&gt;
+...
+&lt;h1&gt;Redakční systém&lt;/h1&gt;
+
+curl -s http://localhost:8080/neexistuje -w '\n%{http_code}\n'
+...&lt;h1&gt;Stránka nenalezena&lt;/h1&gt;...
+404
+
+curl -s http://localhost:8080/zdravi -X POST -D - -o /dev/null
+HTTP/1.1 405 Method Not Allowed
+...
+Allow: GET
+
+curl -s http://localhost:8080/index.php/zdravi -w '\n%{http_code}\n' | tail -1
+404</code></pre>
+  <p>Po M2 projde <code>make qa</code> se 103 testy (<code>OK (103 tests, 216 assertions)</code>).</p>
+
+  <h3>Bezpečnost</h3>
+  <ul>
+    <li>XSS: výstup vždy přes <code>e()</code>, jedinou výjimkou je <code>$content</code> v rozvržení.</li>
+    <li>Únik informací: chybové stránky neukazují výjimku ani cestu k souboru, detail je jen v logu.</li>
+    <li>Path traversal: název šablony ověřuje regulární výraz.</li>
+    <li>Nejmenší práva: DDL smí jen <code>redakce_migrace</code> a jen konzole.</li>
+  </ul>
+
+  <h3>Jak to postavili agenti</h3>
+  <p>Plán <code>docs/plan/002-router-di-migrator.md</code> napsal <code>architekt</code> a člověk ho
+  schválil na bráně 1. <code>tester</code> napsal testy napřed, <code>databazista</code> šest migrací,
+  <code>devops</code> cíl <code>make migrate</code> a <code>programator</code> kód až do zelených testů.
+  V tomto milníku nebyla bezpečnostní revize (výukový režim).</p>
+
+  <h3>Vyzkoušej sám</h3>
+  <ol class="kroky">
+    <li>Přidej trasu <code>GET /o-nas</code>, controller a šablonu <code>about.php</code>.</li>
+    <li>Spusť <code>docker compose exec -T app php bin/konzole migrace:vrat --kroky=1</code> a pak
+    <code>make migrate</code>. Co se změnilo ve výpisu <code>migrace:stav</code>?</li>
+    <li>V Adminer vlož rubriku a k ní článek, pak rubriku zkus smazat. Jakou chybu dostaneš?</li>
+  </ol>
+
+  <details class="kviz"><summary>Kvíz (3 otázky)</summary>
+    <p>1. Proč má <code>/zdravi/</code> s lomítkem na konci odpověď 404?</p>
+    <details><summary>Odpověď</summary><p>Router porovnává cestu přesně a koncové lomítko netoleruje.</p></details>
+    <p>2. Proč je v šabloně jediný výpis bez <code>e()</code> právě <code>$content</code>?</p>
+    <details><summary>Odpověď</summary><p>Je to už vykreslené HTML šablony. Kdyby se escapovalo, uživatel by viděl značky jako text.</p></details>
+    <p>3. Co se stane s články, když smažeš uživatele, který je napsal?</p>
+    <details><summary>Odpověď</summary><p>Články zůstanou, <code>created_by</code> a <code>updated_by</code> se nastaví na <code>NULL</code> (<code>ON DELETE SET NULL</code>).</p></details>
+  </details>
+
+  <dl class="slovnicek">
+    <dt>Cizí klíč</dt><dd>Sloupec odkazující na řádek jiné tabulky. Hlídá, aby odkaz nevisel do prázdna.</dd>
+    <dt>DI kontejner</dt><dd>Objekt, který vytváří třídy a doplňuje jim závislosti podle konstruktoru.</dd>
+    <dt>Middleware</dt><dd>Vrstva kolem zpracování požadavku, např. zachytávání chyb.</dd>
+    <dt>Migrace</dt><dd>Soubor s kódem pro změnu schématu databáze, který jde provést i vrátit.</dd>
+    <dt>Router</dt><dd>Část aplikace, která podle metody a cesty vybere controller.</dd>
+  </dl>
+  <!-- AGENT: kapitola M2 -->
 </section>
 
 <section class="kapitola" id="architektura">
@@ -567,6 +737,11 @@ crontab -e
     <dt>Brána (gate)</dt><dd>Místo v procesu, kde se čeká na rozhodnutí člověka.</dd>
     <dt>Environment (GitHub)</dt><dd>Pojmenované cílové prostředí s vlastními secrets a pravidly schvalování nasazení.</dd>
     <dt>GHCR</dt><dd>GitHub Container Registry — úložiště Docker obrazů vedle repozitáře.</dd>
+    <dt>Cizí klíč</dt><dd>Sloupec odkazující na řádek jiné tabulky. Hlídá, aby odkaz nevisel do prázdna.</dd>
+    <dt>DI kontejner</dt><dd>Objekt, který vytváří třídy a doplňuje jim závislosti podle konstruktoru.</dd>
+    <dt>Middleware</dt><dd>Vrstva kolem zpracování požadavku, např. zachytávání chyb.</dd>
+    <dt>Migrace</dt><dd>Soubor s kódem pro změnu schématu databáze, který jde provést i vrátit.</dd>
+    <dt>Router</dt><dd>Část aplikace, která podle metody a cesty vybere controller.</dd>
     <!-- AGENT: doplňuj pojmy z dalších kapitol (abecedně) -->
   </dl>
 </section>

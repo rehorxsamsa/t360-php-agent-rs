@@ -1,5 +1,5 @@
 # 002 – Router, DI kontejner, middleware, šablony, chybové stránky, migrátor a schéma
-Stav: návrh
+Stav: hotovo
 
 - **Milník:** M2 · **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP, bez kola security review
 - **Autor:** agent architekt · **Datum:** 2026-10-03

@@ -47,3 +47,8 @@ Aplikace je jen lokální výuková (Docker na localhostu), nikdy na produkci. B
 se zmírňují ve prospěch rychlého spuštění a ukázky práce agentů; nemusí být na 100 %.
 - T5: AC 6 opraveno (`ALTER USER redakce_cteni`, heslo sjednoceno s `.env`). AC 7, 33, 1 přijaty jako neověřené.
 - T6 (security review) se pro výukové účely přeskakuje; rizika výše jsou přijatá.
+
+## Otevřené úkoly pro M9 (z plánu 002)
+- Oddělit migrační heslo (`DB_MIGRACE_*`) od služby `app`, např. jednorázovým kontejnerem; v M2 je v `app` kvůli `bin/konzole` a integračním testům.
+- Produkční `prod` stage musí kopírovat i `config/`, `templates/`, `database/` a `bin/`.
+- Dvě sady testů nesmí běžet paralelně nad `redakce_test`.

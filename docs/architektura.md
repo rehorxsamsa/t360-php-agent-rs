@@ -1,7 +1,7 @@
 # Architektura — Redakční systém (t360)
 
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plán 001 M1 — hotovo;
-> plán 002 M2 — stav **návrh**, části označené „M2“ zatím neexistují).
+> plán 002 M2 — implementováno, části označené „M2“ existují v kódu).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -55,7 +55,7 @@ flowchart LR
 ```
 
 Stav po M1: `Kernel` s pevně zadrátovanou cestou `/zdravi`, rozhraní `Domain\Health\DatabaseHealth`
-a jeho PDO implementace. M2 (plán 002) přidává kontejner, router, middleware, šablony, chybové
+a jeho PDO implementace. M2 (plán 002) přidal kontejner, router, middleware, šablony, chybové
 stránky, konzoli a migrátor. `App\Container` je technické jádro bez závislostí na doméně;
 kontejner smí volat jen kompoziční kořen a `Kernel` (dispečer), controllery dostávají závislosti
 konstruktorem.
