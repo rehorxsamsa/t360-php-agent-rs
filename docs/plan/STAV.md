@@ -41,3 +41,9 @@ zůstaly jen pohodlnou první linií. Schvaluje člověk (mění architekturu pr
   které ten klíč jen zmiňují); `curl -w` s `%output{…}` je nebezpečné až od curl 8.3 (na hostiteli je 7.81).
 - **Pohodlí:** holé `git diff`, `git diff --staged`, `git log`, `git show <commit>` jdou přes dotaz; případně přidat
   přesné tvary do `allow`.
+
+## Rozhodnutí: výukový režim (2026-10-03)
+Aplikace je jen lokální výuková (Docker na localhostu), nikdy na produkci. Bezpečnostní omezení a doporučení
+se zmírňují ve prospěch rychlého spuštění a ukázky práce agentů; nemusí být na 100 %.
+- T5: AC 6 opraveno (`ALTER USER redakce_cteni`, heslo sjednoceno s `.env`). AC 7, 33, 1 přijaty jako neověřené.
+- T6 (security review) se pro výukové účely přeskakuje; rizika výše jsou přijatá.
