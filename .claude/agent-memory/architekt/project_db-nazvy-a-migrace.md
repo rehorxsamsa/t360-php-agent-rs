@@ -13,7 +13,8 @@ metadata:
   (otázka 1). Ověř v `compose.yaml`, jak to dopadlo.
 - Dev mount `app` je `.:/app:ro` + rw podadresáře; nové top-level adresáře (`config/`,
   `templates/`) jsou v kontejneru jen ke čtení — pro čtení stačí, prod obraz (M9) je musí kopírovat.
-- Číslování plánů: 002 = M2 (router/DI/migrátor); CI, které plán 001 slíbil jako 002, dostane 003.
+- Číslování plánů: 002 = M2, 003 = M3 (přihlášení); CI (původně slíbené jako 002, pak 003)
+  dostane 004 nebo další volné číslo. Migrační heslo v `app` je od M2 (otázka 1 schválena).
 
 **Why:** rozpory mezi skilly a ADR se opakují; tým jinak dostává protichůdné pokyny.
 
