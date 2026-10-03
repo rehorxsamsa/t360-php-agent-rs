@@ -1,11 +1,12 @@
 # Architektura — Redakční systém (t360)
 
-> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plán 001 M1 — hotovo;
-> plán 002 M2 — implementováno, části označené „M2“ existují v kódu; plán 003 M3 — návrh).
+> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plány 001–003, M1–M3 — hotovo;
+> plán 004 M4 veřejná část — návrh, části označené „M4“ zatím v kódu nejsou).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
-> [ADR-0004](adr/0004-anglicke-nazvy-v-databazi.md) anglické názvy v DB (navrženo).
+> [ADR-0004](adr/0004-anglicke-nazvy-v-databazi.md) anglické názvy v DB ·
+> [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer (navrženo).
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -26,20 +27,20 @@ flowchart LR
         MW --> RT["RoutingMiddleware<br/>Router::match"]
         RT --> C["Controller"]
         S["Session (líná služba)<br/>CsrfToken, AuthSession"] -.-> MW
-        C --> V["TemplateRenderer + e()<br/>templates/*.php"]
+        C --> V["TemplateRenderer + e()<br/>templates/*.php<br/>MarkdownRenderer, czech_date (M4)"]
     end
     subgraph Con["App\\Console (M2)"]
-        CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav"]
+        CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)"]
     end
     subgraph App["App\\Application — use-cases"]
-        UC["služby / use-cases (M4+)"]
+        UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)"]
     end
     subgraph Dom["App\\Domain — entity, VO, rozhraní repozitářů"]
-        I["rozhraní: DatabaseHealth (M1),<br/>ArticleRepository… (M4+)"]
+        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)"]
     end
     subgraph Inf["App\\Infrastructure — PDO, migrace, config"]
-        R["Pdo*Repository<br/>ConnectionFactory, DatabaseConfig"]
-        MG["Migration\\Migrator<br/>PdoMigrationRepository<br/>database/migrations/*.php"]
+        R["Pdo*Repository (vč. PdoArticleRepository M4)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
+        MG["Migration\\Migrator<br/>PdoMigrationRepository<br/>database/migrations/*.php<br/>Seed + database/seeds/*.php (M4)"]
     end
     subgraph Ai["App\\Ai (M6+)"]
         L["LlmClient: AnthropicClient,<br/>OllamaClient, FakeLlmClient"]
@@ -66,6 +67,15 @@ autorizace“: párování trasy se přesouvá do `RoutingMiddleware` **před** 
 neexistující trasy); session není vrstva, ale líná služba (`Http\Session\Session`, implementace
 `Infrastructure\Session\NativeSession`) — veřejné stránky nedostanou cookie; autentizace a autorizace
 jsou jeden `AdminAccessMiddleware` (jediná role `admin`, ochrana podle prefixu `/admin`).
+
+M4 (plán 004, návrh) — veřejné čtení jde `Controller → PublishedArticles (Application) → ArticleRepository
+(Domain) ← PdoArticleRepository`. Pravidlo „veřejně jen publikované a ne budoucí“ je v SQL repozitáře
+(metody `*Published*`), čas dodává `Clock` (PHP `Europe/Prague`, ne `NOW()` v MariaDB/UTC). Repozitář
+vrací read modely (`ArticleSummary` s rubrikou přes `JOIN`, `ArticleDetail` + štítky druhým dotazem) —
+žádné N+1. Controller hlásí 404 výjimkou `Http\PageNotFound`, kterou `ErrorHandlerMiddleware` vykreslí
+stejně jako neexistující trasu. Markdown → HTML jen přes `Http\View\MarkdownRenderer` (ADR-0005, jediný
+výpis bez `e()` mimo `layout.php`). Seed (`db:seed`) je soubor `database/seeds/demo_content.php` vracející
+objekt s rozhraním `Infrastructure\Seed\Seed` — obdoba migrací; běží jako `redakce_app`, nic nemaže.
 
 ## 2. Běhové prostředí (dev, `compose.yaml`, projekt `t360`)
 Hostitel má jen `docker`, `git`, `bash`, `jq` (+ `make`, `curl` — čeká na schválení). Žádné PHP ani Node.
