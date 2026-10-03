@@ -15,10 +15,11 @@
     <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
+<a class="skip-link" href="#obsah">Přejít na obsah</a>
 <header class="site-header">
     <a class="site-name" href="/">Redakční systém</a>
 </header>
-<main>
+<main id="obsah">
 <?= $content /* už vykreslené HTML z šablony, ne vstup uživatele */ ?>
 </main>
 <footer class="site-footer">

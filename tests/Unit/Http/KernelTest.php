@@ -12,6 +12,7 @@ use App\Http\Response;
 use App\Http\Routing\Router;
 use App\Http\Session\Session;
 use App\Tests\Unit\Support\ArraySession;
+use App\Tests\Unit\Support\TestContainer;
 use App\Tests\Unit\Http\Fixtures\ThrowingController;
 use PHPUnit\Framework\TestCase;
 
@@ -46,6 +47,8 @@ final class KernelTest extends TestCase
         $container->set(DatabaseHealth::class, static fn(): DatabaseHealth => $health);
         // Nativní session se v testech nikdy nespouští.
         $container->set(Session::class, static fn(): Session => new ArraySession());
+        // Repozitář článků v paměti: GET / nesmí sáhnout do databáze.
+        TestContainer::replaceArticleDependencies($container);
 
         return $container;
     }
@@ -137,6 +140,7 @@ final class KernelTest extends TestCase
         self::assertSame('text/html; charset=utf-8', $headers['content-type'] ?? null);
         self::assertStringContainsString('<html lang="cs">', $response->body);
         self::assertStringContainsString('Redakční systém', $response->body);
+        self::assertStringContainsString('Zatím tu nejsou žádné publikované články.', $response->body);
     }
 
     public function test_unknown_path_renders_czech_html_404_page_with_link_home(): void

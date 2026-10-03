@@ -6,10 +6,13 @@ use App\Console\Command\CreateAdminCommand;
 use App\Console\Command\MigrateCommand;
 use App\Console\Command\MigrationStatusCommand;
 use App\Console\Command\RollbackCommand;
+use App\Console\Command\SeedCommand;
 use App\Console\ConsoleApplication;
 use App\Container\Container;
+use App\Domain\Article\ArticleRepository;
 use App\Domain\Audit\AuditLogRepository;
 use App\Domain\Health\DatabaseHealth;
+use App\Domain\Time\Clock;
 use App\Domain\User\UserRepository;
 use App\Http\Middleware\AdminAccessMiddleware;
 use App\Http\Middleware\CsrfMiddleware;
@@ -24,10 +27,12 @@ use App\Infrastructure\Config\DatabaseConfig;
 use App\Infrastructure\Migration\Migrator;
 use App\Infrastructure\Migration\PdoMigrationRepository;
 use App\Infrastructure\Persistence\ConnectionFactory;
+use App\Infrastructure\Persistence\PdoArticleRepository;
 use App\Infrastructure\Persistence\PdoAuditLogRepository;
 use App\Infrastructure\Persistence\PdoDatabaseHealthRepository;
 use App\Infrastructure\Persistence\PdoUserRepository;
 use App\Infrastructure\Session\NativeSession;
+use App\Infrastructure\Time\SystemClock;
 
 /**
  * Kompoziční kořen: vrací při každém načtení nový Container.
@@ -61,6 +66,13 @@ $container->set(
     AuditLogRepository::class,
     static fn(Container $c): AuditLogRepository => new PdoAuditLogRepository($c->get(\PDO::class)),
 );
+
+$container->set(
+    ArticleRepository::class,
+    static fn(Container $c): ArticleRepository => new PdoArticleRepository($c->get(\PDO::class)),
+);
+
+$container->set(Clock::class, static fn(): Clock => new SystemClock());
 
 // Session startuje líně; Secure cookie zapíná produkce proměnnou SESSION_COOKIE_SECURE=1 (dev běží přes HTTP).
 $container->set(
@@ -100,7 +112,18 @@ $container->set(
         'migrace:vrat' => RollbackCommand::class,
         'migrace:stav' => MigrationStatusCommand::class,
         'admin:vytvor' => CreateAdminCommand::class,
+        'db:seed' => SeedCommand::class,
     ]),
+);
+
+// Seed běží jako aplikační účet (stačí DML); samotný příkaz odmítne prostředí mimo dev|test.
+$container->set(
+    SeedCommand::class,
+    static fn(Container $c): SeedCommand => new SeedCommand(
+        new ConnectionFactory($c->get(DatabaseConfig::class)),
+        $root . '/database/seeds/demo_content.php',
+        (string) getenv('APP_ENV'),
+    ),
 );
 
 $container->set(Migrator::class, static function () use ($root): Migrator {

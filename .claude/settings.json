@@ -27,6 +27,8 @@
       "Bash(make test)",
       "Bash(make qa)",
       "Bash(make fix)",
+      "Bash(make migrate)",
+      "Bash(make seed)",
       "Bash(make ps)",
       "Bash(make logs)",
       "Bash(make help)",

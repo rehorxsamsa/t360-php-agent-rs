@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Http\View;
 
+use App\Application\Article\ArticlePage;
 use App\Http\View\TemplateNotFound;
 use App\Http\View\TemplateRenderer;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -28,12 +29,12 @@ final class TemplateRendererTest extends TestCase
 
     public function test_home_is_wrapped_in_layout_with_escaped_title(): void
     {
-        $html = $this->real()->render('home', ['title' => '<b>Ahoj</b>']);
+        $html = $this->real()->render('home', ['title' => '<b>Ahoj</b>', 'page' => new ArticlePage([], 1, 1, 0)]);
 
         self::assertStringContainsString('<html lang="cs">', $html);
         self::assertStringContainsString('<title>&lt;b&gt;Ahoj&lt;/b&gt;', $html);
         self::assertStringNotContainsString('<b>Ahoj</b>', $html);
-        self::assertMatchesRegularExpression('/<main[^>]*>.*Články přibudou v dalším milníku\..*<\/main>/s', $html);
+        self::assertMatchesRegularExpression('/<main[^>]*>.*Zatím tu nejsou žádné publikované články\..*<\/main>/s', $html);
     }
 
     #[DataProvider('invalidTemplateProvider')]

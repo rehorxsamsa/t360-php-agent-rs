@@ -11,6 +11,7 @@ final readonly class Request
     /**
      * @param array<string, string> $routeParameters hodnoty ze zástupných částí trasy (doplní RoutingMiddleware)
      * @param array<string, string> $body řetězcové hodnoty z POST formuláře (ne-řetězce se zahazují)
+     * @param array<string, string> $query řetězcové hodnoty z query stringu (ne-řetězce se zahazují)
      */
     public function __construct(
         public string $method,
@@ -19,6 +20,7 @@ final readonly class Request
         public array $body = [],
         public ?string $clientIp = null,
         public ?RouteMatch $route = null,
+        public array $query = [],
     ) {}
 
     /**
@@ -26,18 +28,24 @@ final readonly class Request
      */
     public function withRouteParameters(array $parameters): self
     {
-        return new self($this->method, $this->path, $parameters, $this->body, $this->clientIp, $this->route);
+        return new self($this->method, $this->path, $parameters, $this->body, $this->clientIp, $this->route, $this->query);
     }
 
     public function withRoute(RouteMatch $route): self
     {
-        return new self($this->method, $this->path, $route->parameters, $this->body, $this->clientIp, $route);
+        return new self($this->method, $this->path, $route->parameters, $this->body, $this->clientIp, $route, $this->query);
     }
 
     /** Hodnota pole formuláře; chybějící pole vrací prázdný řetězec. */
     public function input(string $name): string
     {
         return $this->body[$name] ?? '';
+    }
+
+    /** Hodnota parametru query stringu; chybějící (nebo pole) vrací prázdný řetězec. */
+    public function queryParameter(string $name): string
+    {
+        return $this->query[$name] ?? '';
     }
 
     /** @throws \LogicException parametr trasa nedefinuje (chyba programátora) */
@@ -47,7 +55,7 @@ final readonly class Request
             ?? throw new \LogicException(sprintf('Parametr trasy "%s" neexistuje.', $name));
     }
 
-    /** Jediné místo, které čte $_SERVER a $_POST. */
+    /** Jediné místo, které čte $_SERVER, $_GET a $_POST. */
     public static function fromGlobals(): self
     {
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -67,11 +75,19 @@ final readonly class Request
             }
         }
 
+        $query = [];
+        foreach ($_GET as $name => $value) {
+            if (is_string($value)) {
+                $query[(string) $name] = $value;
+            }
+        }
+
         return new self(
             $method,
             $path === '' ? '/' : $path,
             body: $body,
             clientIp: is_string($address) ? $address : null,
+            query: $query,
         );
     }
 }

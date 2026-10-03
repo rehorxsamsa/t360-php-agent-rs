@@ -25,3 +25,17 @@ if (!function_exists('csrf_field')) {
         return '<input type="hidden" name="_csrf" value="' . e_attr($token) . '">';
     }
 }
+
+if (!function_exists('czech_date')) {
+    /** České datum bez rozšíření intl: `3. října 2026` (měsíc ve 2. pádě). */
+    function czech_date(DateTimeInterface $date): string
+    {
+        /** @var array<int, string> $months */
+        $months = [
+            1 => 'ledna', 2 => 'února', 3 => 'března', 4 => 'dubna', 5 => 'května', 6 => 'června',
+            7 => 'července', 8 => 'srpna', 9 => 'září', 10 => 'října', 11 => 'listopadu', 12 => 'prosince',
+        ];
+
+        return $date->format('j') . '. ' . $months[(int) $date->format('n')] . ' ' . $date->format('Y');
+    }
+}
