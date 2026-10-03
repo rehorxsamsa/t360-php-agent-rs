@@ -1,3 +1,3 @@
 - [Výukový režim](project_vyukovy-rezim.md) — od 2026-10-03 MVP plány, bez security review, u otázek vždy doporučení
-- [DB názvy a migrace](project_db-nazvy-a-migrace.md) — ADR-0004 anglicky, skill db-migrace zastaralý, migrační heslo v app, CI plán = 004+
-- [Omezení prostředí pro AC](project_omezeni-prostredi-pro-ac.md) — curl hook bez cookie jar, Playwright na http://web, session v PHPUnit, PHPStan
+- [DB názvy, migrace, seed](project_db-nazvy-a-migrace.md) — ADR-0004 anglicky, číslování plánů (CI = 005+), seed db:seed, čas přes Clock
+- [Omezení prostředí pro AC](project_omezeni-prostredi-pro-ac.md) — curl hook, Playwright na http://web, session/Kernel v PHPUnit, intl chybí, kolace

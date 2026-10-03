@@ -7,14 +7,17 @@ metadata:
 
 - Tabulky/sloupce/ENUM anglicky dle ADR-0004 (plán 002, M2): `articles`, `categories`, `tags`,
   `article_tags`, `users`, `audit_log`, `migrations(name, executed_at)`, `excerpt` = perex.
-  Skill `.claude/skills/db-migrace/SKILL.md` ještě píše česky — dokud ho někdo (se souhlasem)
-  nepřepíše, má přednost ADR-0004. CLI příkazy `bin/konzole migrace:*` zůstávají česky (kontrakt).
+  Skill `db-migrace` je od M2 přepsaný anglicky (soulad s ADR-0004, ověřeno 2026-10-03).
+  CLI příkazy `bin/konzole migrace:*` zůstávají česky (kontrakt).
 - Revize M1 (S4) záměrně nedala `DB_MIGRACE_PASSWORD` do služby `app`; plán 002 navrhuje vrátit
   (otázka 1). Ověř v `compose.yaml`, jak to dopadlo.
 - Dev mount `app` je `.:/app:ro` + rw podadresáře; nové top-level adresáře (`config/`,
   `templates/`) jsou v kontejneru jen ke čtení — pro čtení stačí, prod obraz (M9) je musí kopírovat.
-- Číslování plánů: 002 = M2, 003 = M3 (přihlášení); CI (původně slíbené jako 002, pak 003)
-  dostane 004 nebo další volné číslo. Migrační heslo v `app` je od M2 (otázka 1 schválena).
+- Číslování plánů: 002 = M2, 003 = M3 (přihlášení), 004 = M4 (veřejná část, zúžená; rubriky/štítky/
+  hledání = M4b); CI (slibované už od 001) dostane 005 nebo další volné. Migrační heslo v `app` je od M2.
+- Seed (M4 návrh): `database/seeds/demo_content.php` vrací objekt `Infrastructure\Seed\Seed`, příkaz
+  `db:seed` (otázka 3 plánu 004), běží jako `redakce_app`, jen doplňuje podle slugu, nic nemaže.
+- Časy: PHP `Europe/Prague`, MariaDB v UTC → v SQL nepoužívat `NOW()` pro `published_at`, čas přes `Clock`.
 
 **Why:** rozpory mezi skilly a ADR se opakují; tým jinak dostává protichůdné pokyny.
 

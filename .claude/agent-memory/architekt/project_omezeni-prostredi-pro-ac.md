@@ -17,7 +17,14 @@ metadata:
 - **CSRF před routerem** by změnilo kontrakt 404/405 z M2 → plán 003 přesunul `Router::match`
   do `RoutingMiddleware` před `CsrfMiddleware`.
 
-**Why:** zjištěno při plánu 003 (M3, 2026-10-03); bez toho tým navrhne AC, které nejde ověřit.
+- **Unit testy přes Kernel** (`KernelTest`, `TestContainer`) berou skutečný `config/container.php` a env
+  `DB_NAME=redakce_test` → každý nový repozitář volaný z veřejné stránky musí mít dvojníka v paměti,
+  jinak `GET /` v unit sadě sáhne do DB (po `TestDatabase::reset()` bez tabulek → 500).
+- **PHP obraz nemá `intl`** (jen `pdo_mysql`, `opcache` + výchozí `mbstring`) → české datum vlastním polem měsíců.
+- **Kolace `utf8mb4_czech_ci` + PAD SPACE**: `WHERE slug = ?` ignoruje velikost písmen a koncové mezery →
+  slug z URL validovat regexem před dotazem.
+
+**Why:** zjištěno při plánech 003 a 004 (M3/M4, 2026-10-03); bez toho tým navrhne AC, které nejde ověřit.
 
 **How to apply:** při plánech s HTTP/session/E2E navrhuj AC v mezích hooku a Playwrightu; ověř
 aktuální hook a compose, mohly se změnit. Viz [[project-vyukovy-rezim]], [[project-db-nazvy-a-migrace]].
