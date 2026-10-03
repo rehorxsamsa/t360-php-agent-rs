@@ -3,7 +3,8 @@
 source "$(dirname "$0")/_spolecne.sh"
 vyzaduj_jq
 F=$(jq -r '.tool_input.file_path // ""')
-REL="${F#"$PROJEKT"/}"
+# Normalizace cesty ("/./", "//", ".." ani symlink neobejde vzory níže).
+REL=$(normalizuj_rel "$F")
 
 case "$REL" in
   .env.example) exit 0 ;;
@@ -13,6 +14,11 @@ case "$REL" in
   .claude/settings.json|.claude/hooks/*) zeptej_se "Změna bezpečnostní konfigurace agentů ($REL) – vyžaduje souhlas člověka." ;;
   .github/workflows/*) zeptej_se "Změna CI/CD workflow ($REL) – vyžaduje souhlas člověka." ;;
 esac
+# compose*/override, Makefile/GNUmakefile/*.mk, docker/, hooky, tests/Hooks, .mcp.json, .dockerignore, .envrc,
+# .claude/* (kromě agent-memory), CLAUDE.md, AGENTS.md: soubory, které nástroj načte/spustí na hostiteli.
+if chraneny_soubor "$REL"; then
+  zeptej_se "Soubor ovlivňuje spouštění na hostiteli/Docker nebo oprávnění agentů ($REL) – souhlas člověka."
+fi
 
 # Commitnutá migrace je neměnná.
 if [[ "$REL" == database/migrations/* ]] && git -C "$PROJEKT" ls-files --error-unmatch "$REL" >/dev/null 2>&1; then

@@ -11,9 +11,18 @@ description: Závazný kontrakt pro Docker, CI a nasazení na VPS Debian 13 — 
 | `app` | PHP 8.4-FPM, target `dev`, repo mount do `/app`, Xdebug vyp. | obraz `ghcr.io/<owner>/redakcni-system-app:${IMAGE_TAG}`, `read_only`, tmpfs `/tmp` |
 | `web` | nginx 1.x, `8080:80` | obraz `ghcr.io/<owner>/redakcni-system-web:${IMAGE_TAG}`, port `127.0.0.1:${WEB_PORT:-8085}:80` |
 | `db` | `mariadb:11.8`, `127.0.0.1:3307:3306` (jen pro MCP čtení) | `mariadb:11.8`, **bez publikovaného portu**, volume `db_data` |
+| `adminer` | `adminer:5`, `127.0.0.1:8081:8080` (jen dev) | — (nepoužívá se) |
+| `mcp-playwright` | profil `mcp`, `mcr.microsoft.com/playwright/mcp:<pevná verze>`, stdio přes `docker compose run --rm -T`, bez portů | — (nepoužívá se) |
+| `mcp-mariadb` | profil `mcp`, `docker/mcp/mariadb/Dockerfile` (pinnutý `@benborla29/mcp-server-mysql`), uživatel `redakce_cteni` (jen `SELECT`), `db:3306` | — (nepoužívá se) |
 | `ollama` | profil `ai-local` | — (nepoužívá se) |
 | `caddy` | — | profil `caddy` (varianta A: čistý VPS, TLS na 80/443, `DOMENA` z env) |
 
+- Dev `compose.yaml` (ADR-0002): top-level `name: t360` (síť `t360_default`, volume `t360_db_data`) a
+  `container_name: <služba>-t360` u každé služby (`app-t360`, `web-t360`, `db-t360`, `adminer-t360`,
+  `mcp-playwright-t360`, `mcp-mariadb-t360`; u `docker compose run` se `container_name` ignoruje).
+  `compose.prod.yaml` zůstává beze změny (`name: redakce`, bez `container_name`).
+- MCP obrazy mají pevnou verzi (nikdy `latest`); Playwright běží bez `--pull=always`. Heslo `redakce_cteni`
+  bere compose z `.env`, nikdy ho nepotřebuje Claude Code.
 - Healthcheck `web`: `GET /zdravi` → `200 {"stav":"ok","db":"ok"}`.
 - Všechny kontejnery: ne-root, `security_opt: [no-new-privileges:true]`, `cap_drop: [ALL]` (+ jen nutné `cap_add`).
 - Prod tajemství: soubor `/opt/redakce/.env` na serveru (`env_file`), nikdy v obrazu ani v GitHubu.

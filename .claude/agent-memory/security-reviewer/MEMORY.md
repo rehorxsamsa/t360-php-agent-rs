@@ -1,0 +1,1 @@
+- [Opakované chyby týmu](project_opakovane-chyby-tymu.md) — make expanze/CLI_VARS, override soubory, allow = zápis (git restore -W, --output), --pathspec-from-file, redirect mimo projekt

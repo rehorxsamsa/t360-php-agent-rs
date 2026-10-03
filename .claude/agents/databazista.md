@@ -1,7 +1,7 @@
 ---
 name: databazista
 description: Databázový specialista MariaDB 11.8. Použij pro návrh schématu, migrace, indexy, seed data, vektorové sloupce (RAG) a analýzu výkonu dotazů.
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, mcp__mariadb-cteni
 model: sonnet
 color: yellow
 memory: project
@@ -10,17 +10,8 @@ skills:
 mcpServers:
   - mariadb-cteni:
       type: stdio
-      command: npx
-      args: ["-y", "@benborla29/mcp-server-mysql"]
-      env:
-        MYSQL_HOST: "127.0.0.1"
-        MYSQL_PORT: "3307"
-        MYSQL_USER: "redakce_cteni"
-        MYSQL_PASS: "${DB_READONLY_PASSWORD}"
-        MYSQL_DB: "redakce"
-        ALLOW_INSERT_OPERATION: "false"
-        ALLOW_UPDATE_OPERATION: "false"
-        ALLOW_DELETE_OPERATION: "false"
+      command: docker
+      args: ["compose", "-f", "${CLAUDE_PROJECT_DIR:-.}/compose.yaml", "run", "--rm", "-T", "mcp-mariadb"]
 hooks:
   PreToolUse:
     - matcher: "Bash"

@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Git hook: rychlá kontrola před commitem (syntaxe PHP ve staged souborech).
+# Git hook: rychlá kontrola před commitem (syntaxe PHP ve staged souborech) v kontejneru 'app'.
+# Fail-closed: neběží-li app, commit PHP souborů se zastaví (žádné tiché projití, žádné host PHP).
 FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.php$' || true)
 [ -z "$FILES" ] && exit 0
-if [ -n "$(docker compose ps -q --status running app 2>/dev/null)" ]; then
-  for f in $FILES; do docker compose exec -T app php -l "/app/$f" >/dev/null || { echo "✗ Syntaktická chyba: $f" >&2; exit 1; }; done
+# Repo před M1 (bez compose.yaml) nic neblokuje.
+[ -f compose.yaml ] || exit 0
+if [ -z "$(docker compose ps -q --status running app 2>/dev/null)" ]; then
+  echo "✗ Kontejner app neběží, PHP soubory nelze zkontrolovat – spusť make up a commit zopakuj." >&2
+  exit 1
 fi
+for f in $FILES; do
+  docker compose exec -T app php -l "/app/$f" >/dev/null || { echo "✗ Syntaktická chyba: $f" >&2; exit 1; }
+done
 exit 0

@@ -37,8 +37,9 @@ Píšeš **jen dokumenty** v `docs/` — nikdy ne soubory v `src/`, `tests/`, `t
   HTTP klient LLM, session). Závislosti míří **dovnitř** k Domain.
 - Front controller + vlastní jednoduchý router a DI kontejner (autowiring přes reflexi je OK).
 - Middleware řetězec: bezpečnostní hlavičky → session → CSRF → autentizace → autorizace.
-- AI část za rozhraním `LlmKlient` s implementacemi `AnthropicKlient`, `OllamaKlient`,
-  `FalesnyKlient` (deterministický, pro testy a běh bez API klíče).
+- AI část za rozhraním `LlmClient` s implementacemi `AnthropicClient`, `OllamaClient`,
+  `FakeLlmClient` (deterministický, pro testy a běh bez API klíče).
+- Identifikátory v kódu anglicky (ADR-0003); česky jen UI, URL, komentáře a zamčené kontrakty.
 - Preferuj jednoduchost: žádná abstrakce bez dvou reálných použití (YAGNI).
 
 ## Postup
