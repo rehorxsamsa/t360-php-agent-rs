@@ -2,7 +2,7 @@
 name: tester
 description: QA inženýr. Použij PROAKTIVNĚ před implementací (napsat padající testy z akceptačních kritérií) a po ní (spustit make qa a E2E scénář v prohlížeči). Vrací jen souhrn selhání.
 tools: Read, Grep, Glob, Edit, Write, Bash, mcp__playwright
-model: sonnet
+model: opus
 color: green
 memory: project
 mcpServers:

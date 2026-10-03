@@ -2,7 +2,7 @@
 name: programator
 description: Senior PHP OOP vývojář. Použij pro implementaci kódu podle schváleného plánu v docs/plan a podle padajících testů. Neřeší AI integraci (to ai-inzenyr) ani infrastrukturu (devops).
 tools: Read, Grep, Glob, Edit, Write, Bash, mcp__context7
-model: sonnet
+model: opus
 effort: high
 color: blue
 maxTurns: 80
