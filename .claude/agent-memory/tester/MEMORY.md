@@ -1,1 +1,1 @@
-- [Hook blokuje curl + @](project_hook-curl-zavinac.md) — E2E scénáře psát přes Edit, ne Bash heredoc; integrační testy nespouštět souběžně s programátorem
+- [Hook curl + Playwright omezení](project_hook-curl-zavinac.md) — curl: %40, URL bez uvozovek/proměnných, žádné PUT/-o soubor; Playwright jen localhost:8080, screenshot s abs. cestou
