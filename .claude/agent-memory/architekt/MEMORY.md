@@ -1,0 +1,2 @@
+- [Výukový režim](project_vyukovy-rezim.md) — od 2026-10-03 MVP plány, bez security review, u otázek vždy doporučení
+- [DB názvy a migrace](project_db-nazvy-a-migrace.md) — ADR-0004 anglicky, skill db-migrace zastaralý, migrační heslo v app, číslo CI plánu 003
