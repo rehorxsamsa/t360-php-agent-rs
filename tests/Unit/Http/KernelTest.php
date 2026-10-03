@@ -10,6 +10,8 @@ use App\Http\Kernel;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\Routing\Router;
+use App\Http\Session\Session;
+use App\Tests\Unit\Support\ArraySession;
 use App\Tests\Unit\Http\Fixtures\ThrowingController;
 use PHPUnit\Framework\TestCase;
 
@@ -42,6 +44,8 @@ final class KernelTest extends TestCase
         /** @var Container $container */
         $container = require __DIR__ . '/../../../config/container.php';
         $container->set(DatabaseHealth::class, static fn(): DatabaseHealth => $health);
+        // Nativní session se v testech nikdy nespouští.
+        $container->set(Session::class, static fn(): Session => new ArraySession());
 
         return $container;
     }

@@ -6,16 +6,14 @@ namespace App\Http;
 
 use App\Container\Container;
 use App\Http\Middleware\MiddlewarePipeline;
-use App\Http\Routing\Router;
 
 /**
- * Jádro HTTP: pipeline middleware, uprostřed router a sestavení controlleru z kontejneru.
- * Kernel je (vedle index.php a bin/konzole) jediné místo, které smí sahat do kontejneru.
+ * Jádro HTTP: pipeline middleware a na jejím konci sestavení controlleru z kontejneru.
+ * Trasu přiřadí RoutingMiddleware; Kernel je (vedle index.php a bin/konzole) jediné místo, které smí sahat do kontejneru.
  */
 final readonly class Kernel
 {
     public function __construct(
-        private Router $router,
         private Container $container,
         private MiddlewarePipeline $pipeline,
     ) {}
@@ -27,7 +25,7 @@ final readonly class Kernel
 
     private function dispatch(Request $request): Response
     {
-        $match = $this->router->match($request->method, $request->path);
+        $match = $request->route ?? throw new \LogicException('Požadavek nemá přiřazenou trasu (chybí RoutingMiddleware).');
 
         [$class, $method] = $match->handler;
         $action = [$this->container->get($class), $method];
@@ -35,7 +33,7 @@ final readonly class Kernel
             throw new \LogicException(sprintf('Controller %s nemá metodu %s().', $class, $method));
         }
 
-        $response = $action($request->withRouteParameters($match->parameters));
+        $response = $action($request);
         if (!$response instanceof Response) {
             throw new \LogicException(sprintf('Controller %s::%s() musí vrátit Response.', $class, $method));
         }

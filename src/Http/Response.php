@@ -64,6 +64,28 @@ final readonly class Response
         );
     }
 
+    /**
+     * Přesměrování (PRG): jen na interní cestu začínající jedním `/`, jinak by šlo o open redirect.
+     *
+     * @throws \InvalidArgumentException cíl není interní cesta
+     */
+    public static function redirect(string $location, int $status = 303): self
+    {
+        if (preg_match('~^/(?![/\\\\])[^\x00-\x1f\x7f]*\z~', $location) !== 1) {
+            throw new \InvalidArgumentException('Přesměrovat lze jen na interní cestu začínající jedním "/".');
+        }
+
+        return new self($status, ['Location' => $location, 'Cache-Control' => 'no-store'], '');
+    }
+
+    /**
+     * @param array<string, string> $headers nové hodnoty přepíší stávající stejného názvu
+     */
+    public function withHeaders(array $headers): self
+    {
+        return new self($this->status, array_merge($this->headers, $headers), $this->body);
+    }
+
     public function send(): void
     {
         http_response_code($this->status);

@@ -2,21 +2,32 @@
 
 declare(strict_types=1);
 
+use App\Console\Command\CreateAdminCommand;
 use App\Console\Command\MigrateCommand;
 use App\Console\Command\MigrationStatusCommand;
 use App\Console\Command\RollbackCommand;
 use App\Console\ConsoleApplication;
 use App\Container\Container;
+use App\Domain\Audit\AuditLogRepository;
 use App\Domain\Health\DatabaseHealth;
+use App\Domain\User\UserRepository;
+use App\Http\Middleware\AdminAccessMiddleware;
+use App\Http\Middleware\CsrfMiddleware;
 use App\Http\Middleware\ErrorHandlerMiddleware;
 use App\Http\Middleware\MiddlewarePipeline;
+use App\Http\Middleware\RoutingMiddleware;
+use App\Http\Middleware\SecurityHeadersMiddleware;
 use App\Http\Routing\Router;
+use App\Http\Session\Session;
 use App\Http\View\TemplateRenderer;
 use App\Infrastructure\Config\DatabaseConfig;
 use App\Infrastructure\Migration\Migrator;
 use App\Infrastructure\Migration\PdoMigrationRepository;
 use App\Infrastructure\Persistence\ConnectionFactory;
+use App\Infrastructure\Persistence\PdoAuditLogRepository;
 use App\Infrastructure\Persistence\PdoDatabaseHealthRepository;
+use App\Infrastructure\Persistence\PdoUserRepository;
+use App\Infrastructure\Session\NativeSession;
 
 /**
  * Kompoziční kořen: vrací při každém načtení nový Container.
@@ -33,6 +44,28 @@ $container->set(
 $container->set(
     DatabaseHealth::class,
     static fn(Container $c): DatabaseHealth => $c->get(PdoDatabaseHealthRepository::class),
+);
+
+// Sdílené líné spojení aplikačního účtu (bez práva DDL) pro repozitáře.
+$container->set(
+    \PDO::class,
+    static fn(Container $c): \PDO => new ConnectionFactory($c->get(DatabaseConfig::class))->create(),
+);
+
+$container->set(
+    UserRepository::class,
+    static fn(Container $c): UserRepository => new PdoUserRepository($c->get(\PDO::class)),
+);
+
+$container->set(
+    AuditLogRepository::class,
+    static fn(Container $c): AuditLogRepository => new PdoAuditLogRepository($c->get(\PDO::class)),
+);
+
+// Session startuje líně; Secure cookie zapíná produkce proměnnou SESSION_COOKIE_SECURE=1 (dev běží přes HTTP).
+$container->set(
+    Session::class,
+    static fn(): Session => new NativeSession(getenv('SESSION_COOKIE_SECURE') === '1'),
 );
 
 $container->set(
@@ -52,7 +85,11 @@ $container->set(Router::class, static function () use ($root): Router {
 $container->set(
     MiddlewarePipeline::class,
     static fn(Container $c): MiddlewarePipeline => new MiddlewarePipeline([
+        $c->get(SecurityHeadersMiddleware::class),
         $c->get(ErrorHandlerMiddleware::class),
+        $c->get(RoutingMiddleware::class),
+        $c->get(CsrfMiddleware::class),
+        $c->get(AdminAccessMiddleware::class),
     ]),
 );
 
@@ -62,6 +99,7 @@ $container->set(
         'migrace:spust' => MigrateCommand::class,
         'migrace:vrat' => RollbackCommand::class,
         'migrace:stav' => MigrationStatusCommand::class,
+        'admin:vytvor' => CreateAdminCommand::class,
     ]),
 );
 

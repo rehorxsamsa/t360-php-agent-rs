@@ -56,3 +56,40 @@ h1 {
     color: var(--muted);
     font-size: 0.875rem;
 }
+
+form label {
+    display: block;
+    font-weight: 600;
+}
+
+form input[type="email"],
+form input[type="password"] {
+    width: 100%;
+    max-width: 24rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    font: inherit;
+}
+
+form button {
+    padding: 0.5rem 1rem;
+    border: 0;
+    border-radius: 0.25rem;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+
+.form-error,
+.notice {
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid var(--accent);
+    background: #f1f5fa;
+}
+
+.form-error {
+    border-left-color: #b3261e;
+    background: #fbeceb;
+}
