@@ -21,6 +21,8 @@ metadata:
   `DB_NAME=redakce_test` → každý nový repozitář volaný z veřejné stránky musí mít dvojníka v paměti,
   jinak `GET /` v unit sadě sáhne do DB (po `TestDatabase::reset()` bez tabulek → 500).
 - **PHP obraz nemá `intl`** (jen `pdo_mysql`, `opcache` + výchozí `mbstring`) → české datum vlastním polem měsíců.
+- **`Request` zahazuje ne-řetězce z `$_POST`/`$_GET`** → pole formuláře `tags[]` potřebují `inputList()`
+  (plán 005). `TestContainer::replaceArticleDependencies` musí nahrazovat každý nový repozitář.
 - **Kolace `utf8mb4_czech_ci` + PAD SPACE**: `WHERE slug = ?` ignoruje velikost písmen a koncové mezery →
   slug z URL validovat regexem před dotazem.
 
