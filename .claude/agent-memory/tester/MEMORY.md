@@ -1,0 +1,1 @@
+- [Hook blokuje curl + @](project_hook-curl-zavinac.md) — E2E scénáře psát přes Edit, ne Bash heredoc; integrační testy nespouštět souběžně s programátorem
