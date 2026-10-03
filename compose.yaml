@@ -1,0 +1,201 @@
+# Vývojové prostředí (dev). Produkce: compose.prod.yaml (M9).
+# Tajemství jen v .env (necommituje se) – zde pouze interpolace a env_file.
+name: t360
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  app:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: dev
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    container_name: app-t360
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    # Jen to, co app potřebuje: žádný root, DB_MIGRACE_PASSWORD ani DB_READONLY_PASSWORD.
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      APP_DEBUG: ${APP_DEBUG:-1}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      AI_PROVIDER: ${AI_PROVIDER:-falesny}
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-redakce}
+      DB_USER: ${DB_USER:-redakce_app}
+      DB_PASSWORD: ${DB_PASSWORD:?chybí DB_PASSWORD v .env}
+    # Zastavená db: embedded DNS Dockeru by jinak čekal ~3,9 s (AC 12 plánu 001).
+    dns_opt:
+      - timeout:1
+      - attempts:1
+    volumes:
+      # Repo je v kontejneru jen ke čtení (revize M1, V2): compose.yaml, Makefile, docker/, .mcp.json
+      # ani skripty hooků z kontejneru přepsat nejde. Zapisovatelné je jen to, co vývoj potřebuje.
+      - .:/app:ro
+      - ./src:/app/src
+      - ./tests/Unit:/app/tests/Unit
+      - ./tests/Integration:/app/tests/Integration
+      - ./public:/app/public
+      - ./var:/app/var
+      - ./vendor:/app/vendor
+      - ./database:/app/database
+      - ./bin:/app/bin
+      - ./composer.json:/app/composer.json
+      - ./composer.lock:/app/composer.lock
+      # Tajemství (.env) kontejner nevidí – hodnoty dostává jen přes `environment:` výše (revize M1, S4).
+      - /dev/null:/app/.env:ro
+      # Git, hooky a konfigurace agentů jsou z kontejneru jen ke čtení.
+      - ./.git:/app/.git:ro
+      - ./.githooks:/app/.githooks:ro
+      - ./.claude:/app/.claude:ro
+      - composer_cache:/composer-cache
+    tmpfs:
+      - /tmp
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # FPM naslouchá na :9000
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  web:
+    <<: *hardening
+    image: nginx:1.30.5-alpine
+    container_name: web-t360
+    user: "101:101"
+    ports:
+      # Jen loopback (revize N4): admin login od M3 nesmí jít přes HTTP z LAN.
+      # Odchylka od workspace pravidla "8080:80", odsouhlaseno člověkem.
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./public:/app/public:ro
+    read_only: true
+    networks:
+      - default
+      - mcp_web
+    tmpfs:
+      - /tmp
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      # kontrakt: GET /zdravi -> 200 {"stav":"ok","db":"ok"}
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/zdravi"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  db:
+    <<: *hardening
+    image: mariadb:11.8.9
+    container_name: db-t360
+    # Přímý běh pod uživatelem mysql (UID 999) – bez roota a bez cap_add.
+    user: "999:999"
+    # Hesla jen pro init skript (první start volume); MARIADB_ROOT_HOST omezuje root na localhost.
+    environment:
+      MARIADB_DATABASE: redakce
+      MARIADB_ROOT_HOST: localhost
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?chybí MARIADB_ROOT_PASSWORD v .env}
+      DB_PASSWORD: ${DB_PASSWORD:?chybí DB_PASSWORD v .env}
+      DB_MIGRACE_PASSWORD: ${DB_MIGRACE_PASSWORD:?chybí DB_MIGRACE_PASSWORD v .env}
+      DB_READONLY_PASSWORD: ${DB_READONLY_PASSWORD:?chybí DB_READONLY_PASSWORD v .env}
+    networks:
+      - default
+      - mcp_db
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mariadb/conf.d:/etc/mysql/conf.d:ro
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  adminer:
+    <<: *hardening
+    image: adminer:5.5.1
+    container_name: adminer-t360
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---- Služby profilu mcp (stdio přes `docker compose run --rm -T <služba>`) ----
+  # `docker compose run` ignoruje container_name; platí pro `up`.
+  mcp-playwright:
+    <<: *hardening
+    profiles: [mcp]
+    image: mcr.microsoft.com/playwright/mcp:v0.0.82
+    container_name: mcp-playwright-t360
+    init: true
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    # Obraz už má ENTRYPOINT s --headless --browser chromium --no-sandbox.
+    command: ["--isolated", "--output-dir", "/artefakty"]
+    networks:
+      - mcp_web
+    volumes:
+      - ./tests/_artefakty:/artefakty
+
+  mcp-mariadb:
+    <<: *hardening
+    profiles: [mcp]
+    build:
+      context: docker/mcp/mariadb
+    image: t360-mcp-mariadb:2.0.9
+    container_name: mcp-mariadb-t360
+    read_only: true
+    networks:
+      - mcp_db
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_USER: redakce_cteni
+      MYSQL_PASS: ${DB_READONLY_PASSWORD:?chybí DB_READONLY_PASSWORD v .env}
+      MYSQL_DB: redakce
+      ALLOW_INSERT_OPERATION: "false"
+      ALLOW_UPDATE_OPERATION: "false"
+      ALLOW_DELETE_OPERATION: "false"
+      ALLOW_DDL_OPERATION: "false"
+
+# default: app/web/db/adminer; mcp_* jsou interní (bez výstupu ven, bez přístupu k ostatním službám).
+networks:
+  default:
+  mcp_db:
+    internal: true
+  mcp_web:
+    internal: true
+
+volumes:
+  db_data:
+  composer_cache:

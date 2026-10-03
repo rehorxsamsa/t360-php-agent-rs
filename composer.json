@@ -1,0 +1,61 @@
+{
+    "name": "t360/redakcni-system",
+    "description": "Redakční systém (CMS) v čistém PHP 8.4 OOP bez frameworku",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": "~8.4.1",
+        "ext-json": "*",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3",
+        "phpstan/phpstan": "^2",
+        "phpunit/phpunit": "^13"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "App\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "8.4.1"
+        },
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "process-timeout": 0
+    },
+    "scripts": {
+        "lint": "find src tests public -name '*.php' -print0 2>/dev/null | xargs -0 -r -n1 -P4 php -d display_errors=stderr -d log_errors=0 -l > /dev/null",
+        "cs": "php-cs-fixer fix --dry-run --diff --using-cache=no",
+        "cs:fix": "php-cs-fixer fix",
+        "stan": "phpstan analyse --memory-limit=512M --no-progress",
+        "check": [
+            "@lint",
+            "@cs",
+            "@stan"
+        ],
+        "test": "phpunit",
+        "qa": [
+            "@check",
+            "@test",
+            "@composer audit"
+        ]
+    },
+    "scripts-descriptions": {
+        "lint": "php -l nad src, tests a public",
+        "cs": "PHP-CS-Fixer bez zápisu",
+        "cs:fix": "PHP-CS-Fixer se zápisem",
+        "stan": "PHPStan level max",
+        "check": "lint + cs + stan",
+        "test": "PHPUnit",
+        "qa": "check + test + composer audit"
+    }
+}

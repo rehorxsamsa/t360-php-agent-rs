@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.githooks
+vendor
+var
+.env
+.env.*
+!.env.example
+tests/_artefakty
+docs
+*.md
+.phpunit.cache
+.php-cs-fixer.cache
