@@ -1,0 +1,3 @@
+- [Pravidlo 0: vše v Dockeru](project_pravidlo0_docker.md) — rozhodnutí člověka 2026-10-03, hostitel jen docker/git/bash/jq, MCP v compose, ADR-0002
+- [Názvy anglicky vs. české skills](project_nazvy_anglicky.md) — ADR-0003 navrženo, mapování Clanek→Article…, DB názvy rozhodne člověk před M2
+- [Pasti konfigurace agentů](project_subagent_tools_mcp.md) — tools allowlist bez MCP, relace z .claude/ bez hooků, docker compose * = root
