@@ -1,5 +1,5 @@
 # ADR-0005: Vlastní minimální Markdown renderer místo knihovny CommonMark
-- **Stav:** navrženo (schvaluje člověk na bráně 1 plánu 004)
+- **Stav:** přijato (schváleno člověkem na bráně 1 plánu 004)
 - **Datum:** 2026-10-03
 - **Autor:** agent architekt
 - **Souvisí:** [plán 004](../plan/004-verejna-cast.md), skill `bezpecnost-owasp` (oddíl Vstup a výstup)

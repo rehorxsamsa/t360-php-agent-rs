@@ -1,5 +1,5 @@
 # 004 – Veřejná část: titulní stránka se stránkováním, detail článku, ukázková data
-Stav: návrh
+Stav: hotovo
 
 - **Milník:** M4 (zúžený rozsah, příběhy 1–2 zadání; příběh 3 → M4b) · **Režim:** výukový
   (viz `docs/plan/STAV.md`) — MVP, bez kola security review

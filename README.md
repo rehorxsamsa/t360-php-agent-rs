@@ -26,6 +26,7 @@ git config core.hooksPath .githooks   # git hooky (formát commitu, kontrola PHP
 make up                               # .env, sestavení obrazů, composer install, start služeb
 make qa                               # php -l, PHP-CS-Fixer, PHPStan, PHPUnit, composer audit
 make migrate                          # vytvoří databázové schéma (migrace z database/migrations/)
+make seed                             # nahraje ukázková data (16 článků; jen dev, opakovat lze bezpečně)
 make mcp                              # jednorázově předstáhne obrazy MCP serverů (Playwright, MariaDB)
 ```
 
@@ -34,7 +35,9 @@ služby zdravé. Další cíle vypíše `make help`.
 
 | Co | Adresa |
 |---|---|
-| Aplikace (titulní stránka) | <http://localhost:8080/> |
+| Aplikace (titulní stránka, 10 článků na stranu) | <http://localhost:8080/> |
+| Starší články (stránkování) | <http://localhost:8080/?strana=2> |
+| Detail článku | <http://localhost:8080/clanek/ukazka-markdownu> |
 | Kontrola zdraví | <http://localhost:8080/zdravi> |
 | Administrace (jen přihlášený admin) | <http://localhost:8080/admin> |
 | Přihlášení do administrace | <http://localhost:8080/admin/prihlaseni> |
@@ -86,9 +89,10 @@ a pro vývoj stačí. Chceš-li začít znovu s novými hesly, smaž volume: `ma
 |---|---|
 | `src/`, `public/`, `tests/` | aplikace, front controller, testy |
 | `config/` | kompoziční kořen: `container.php` (kontejner), `routes.php` (trasy) |
-| `templates/` | PHP šablony (`layout`, `home`, `error`, `admin/`), výstup přes `e()` |
+| `templates/` | PHP šablony (`layout`, `home`, `article`, `error`, `admin/`), výstup přes `e()` |
+| `database/seeds/` | ukázková data (`demo_content.php`), nahrává je `make seed` |
 | `database/migrations/` | migrace schématu (`RRRRMMDDHHMM_popis.php`) |
-| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor` |
+| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed` |
 | `docker/`, `compose.yaml`, `Makefile` | prostředí v Dockeru |
 | `.claude/`, `.mcp.json`, `.githooks/` | tým agentů, hooky, MCP servery |
 | `docs/` | zadání, architektura, ADR, plány, tutoriál |

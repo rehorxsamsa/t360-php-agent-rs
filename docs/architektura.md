@@ -1,7 +1,7 @@
 # Architektura — Redakční systém (t360)
 
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plány 001–003, M1–M3 — hotovo;
-> plán 004 M4 veřejná část — návrh, části označené „M4“ zatím v kódu nejsou).
+> plán 004 M4 veřejná část — implementováno, čeká na schválení na bráně 2).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -68,7 +68,7 @@ neexistující trasy); session není vrstva, ale líná služba (`Http\Session\S
 `Infrastructure\Session\NativeSession`) — veřejné stránky nedostanou cookie; autentizace a autorizace
 jsou jeden `AdminAccessMiddleware` (jediná role `admin`, ochrana podle prefixu `/admin`).
 
-M4 (plán 004, návrh) — veřejné čtení jde `Controller → PublishedArticles (Application) → ArticleRepository
+M4 (plán 004, implementováno) — veřejné čtení jde `Controller → PublishedArticles (Application) → ArticleRepository
 (Domain) ← PdoArticleRepository`. Pravidlo „veřejně jen publikované a ne budoucí“ je v SQL repozitáře
 (metody `*Published*`), čas dodává `Clock` (PHP `Europe/Prague`, ne `NOW()` v MariaDB/UTC). Repozitář
 vrací read modely (`ArticleSummary` s rubrikou přes `JOIN`, `ArticleDetail` + štítky druhým dotazem) —
