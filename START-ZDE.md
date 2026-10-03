@@ -9,10 +9,10 @@ redakcni-system/
 ├── PROMPTY.md              ← všechny prompty, fáze po fázi (tvůj „scénář“)
 ├── AGENTS.md               ← pravidla pro jakéhokoli AI agenta (otevřený standard)
 ├── CLAUDE.md               ← ústava týmu: orchestrace, brány, struktura (importuje AGENTS.md)
-├── .mcp.json               ← sdílené MCP servery: context7 (aktuální dokumentace), github (jen čtení)
+├── .mcp.json               ← sdílené MCP servery: context7 (vzdálený, aktuální dokumentace), github (jen čtení)
 ├── .claude/
 │   ├── settings.json       ← oprávnění (allow/ask/deny) + hooky + env
-│   ├── settings.local.json.example ← tvá lokální tajemství pro MCP (zkopíruj, necommituje se)
+│   ├── settings.local.json.example ← tvůj lokální GitHub token (zkopíruj, necommituje se)
 │   ├── agents/             ← 8 subagentů (role, modely, nástroje, paměť, vlastní hooky a MCP)
 │   ├── skills/             ← 10 skills: /feature /commit /audit /retro + znalostní příručky
 │   ├── rules/              ← pravidla, která se načtou jen u odpovídajících souborů
@@ -29,8 +29,6 @@ redakcni-system/
 ## 1. Prostředí (Ubuntu / WSL2)
 ```bash
 sudo apt update && sudo apt install -y git jq make curl unzip
-# Node.js 20+ (kvůli MCP serverům spouštěným přes npx)
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
 # Docker: buď Docker Desktop s WSL integrací, nebo Docker Engine v Ubuntu
 docker version && docker compose version
 # GitHub CLI (secrets, ověření CI)
@@ -56,11 +54,18 @@ git add -A && git commit -m "chore: startovní sada agentního týmu"
 ```
 `GITHUB_PAT` = fine-grained token jen pro tvůj repozitář s právy **Read** (Contents, Actions,
 Issues). Bez něj github MCP nepoběží — nevadí, je volitelný.
-`DB_READONLY_PASSWORD` si zvolíš teď; stejnou hodnotu později dáš do `.env` (agenti ho
-nevidí — čtení `.env` je zakázané hookem i permissions).
+Hesla k databázi tu nezadáváš: `make up` vytvoří `.env` z `.env.example` a MCP server pro čtení
+databáze běží v Dockeru a heslo bere odtud (agenti `.env` nevidí — čtení je zakázané hookem
+i permissions).
+
+Na hostiteli nepotřebuješ PHP, Composer ani Node.js. Všechno běží v Dockeru. Prostředí
+spustíš `make up`, postup je v [`README.md`](README.md).
 
 ## 4. První spuštění
+**Spouštěj `claude` z kořene repa.** Jen tam se načtou `.claude/settings.json` (oprávnění a
+hooky), `.mcp.json` i definice agentů. Z podadresáře (např. `.claude/`) pojistky neplatí.
 ```bash
+make up && make mcp     # prostředí a obrazy MCP serverů (jednou)
 claude
 ```
 1. Potvrď **workspace trust** — bez něj se nespustí hooky z frontmatteru agentů ani jejich MCP.

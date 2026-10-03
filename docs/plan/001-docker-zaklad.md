@@ -1,5 +1,5 @@
 # 001 – Docker základ, kostra aplikace, Makefile, composer nástroje a /zdravi
-Stav: schváleno
+Stav: hotovo
 
 - **Milník:** M1 (bez CI — `ci.yml` je samostatný plán 002, viz Mimo rozsah)
 - **Autor:** agent architekt · **Datum:** 2026-10-03
@@ -120,7 +120,7 @@ Všechny příkazy se spouští z kořene repa. „Hostitel“ = WSL2/Linux bez 
     potřebuje jen bash, jq a docker).
 
 ### E. MCP servery v Dockeru
-30. **Given** konfigurace, **When** `grep -rn 'npx' .mcp.json .claude/agents/ .claude/settings.json .claude/settings.local.json.example`,
+30. **Given** konfigurace, **When** `grep -rn 'npx' .mcp.json .claude/agents/ .claude/settings.local.json.example` (`settings.json` vynechán – `Bash(npx *)` tam je záměrné deny pravidlo),
     **Then** nic nenajde; `jq -r '.mcpServers.context7 | .type + " " + .url' .mcp.json` vypíše
     `http https://mcp.context7.com/mcp` (varianta A z otázky 3).
 31. **Given** `make mcp`, **When** dokončí, **Then** jsou lokálně obraz Playwright MCP s pevnou

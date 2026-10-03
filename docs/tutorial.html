@@ -133,6 +133,9 @@ ol.kroky{padding-left:1.4rem} ol.kroky > li{margin:.4rem 0}
   <p>Všechny příklady běží i bez API klíče. V režimu <code>AI_PROVIDER=falesny</code> vrací
   aplikace předem připravené odpovědi, takže si můžeš projít celý tok dat zdarma a pak teprve
   přepnout na skutečný model.</p>
+  <p>Rychlý start v pěti příkazech je v <code>README.md</code> v kořeni repozitáře. Na svém
+  počítači potřebuješ jen <code>docker</code>, <code>git</code>, <code>bash</code>, <code>jq</code>,
+  <code>make</code> a <code>curl</code>. PHP, Composer ani Node.js neinstaluješ, všechno běží v Dockeru.</p>
   <!-- AGENT: technicky-spisovatel doplní odkaz na README a seznam předpokladů -->
 </section>
 
@@ -180,8 +183,97 @@ flowchart LR
 
 <section class="kapitola" id="spusteni">
   <h2>Spuštění na svém počítači</h2>
-  <div class="zastupny">Doplní agent technicky-spisovatel po milníku M1: <code>make up</code>,
-  <code>.env</code>, první migrace, vytvoření admina, adresa aplikace.</div>
+  <p class="cil">Milník M1: vývojové prostředí v Dockeru, které na hostiteli nepotřebuje PHP ani
+  Node.js, a první endpoint <code>/zdravi</code>, kterým ověříš, že aplikace i databáze žijí.</p>
+
+  <h3>Jak to funguje</h3>
+  <pre class="mermaid">
+flowchart LR
+  P([Prohlížeč / curl<br/>localhost:8080]) --> W[web<br/>nginx]
+  W -- FastCGI :9000 --> A[app<br/>PHP-FPM 8.4]
+  A -- SQL --> D[(db<br/>MariaDB 11.8)]
+  AD[adminer<br/>localhost:8081] --> D
+  </pre>
+  <p>Nginx servíruje jen složku <code>public/</code> a PHP předává jedině skriptu
+  <code>public/index.php</code>. Aplikace běží pod ne-root uživatelem. Databáze a Adminer
+  poslouchají jen na <code>127.0.0.1</code>, takže je z místní sítě nikdo neuvidí.</p>
+
+  <h3>Krok 1 – Požadavky a git hooky</h3>
+  <pre><code>git config core.hooksPath .githooks</code></pre>
+  <p>Tím zapneš git hooky z <code>.githooks/</code>: kontrolu formátu commitu a PHP souborů.
+  Bez toho by je git ignoroval.</p>
+
+  <h3>Krok 2 – Spusť prostředí</h3>
+  <pre><code>make up</code></pre>
+  <p>Příkaz vytvoří <code>.env</code> z <code>.env.example</code> (pokud chybí), sestaví obrazy,
+  nainstaluje Composer závislosti uvnitř kontejneru <code>app</code> a nastartuje všechny služby.
+  Čeká, až jsou zdravé. Stav ověř:</p>
+  <pre><code>docker compose ps --format '{{.Name}} {{.Health}}'
+adminer-t360
+app-t360 healthy
+db-t360 healthy
+web-t360 healthy</code></pre>
+  <p>Adminer žádný healthcheck nemá, proto u něj stav chybí.</p>
+
+  <h3>Krok 3 – Ověř zdraví aplikace</h3>
+  <pre><code>curl -s http://localhost:8080/zdravi -w '\n%{http_code}\n'
+{"stav":"ok","db":"ok"}
+200</code></pre>
+  <p>Při nedostupné databázi vrátí endpoint <code>{"stav":"chyba","db":"chyba"}</code> a kód 503,
+  bez jakýchkoli podrobností o chybě. Adminer otevři na <a href="http://localhost:8081">http://localhost:8081</a>
+  (server <code>db</code>, uživatel <code>redakce_app</code>, heslo <code>DB_PASSWORD</code> z <code>.env</code>).</p>
+
+  <h3>Krok 4 – Kvalitativní brána</h3>
+  <pre><code>make qa
+...
+ [OK] No errors
+OK (38 tests, 63 assertions)
+No security vulnerability advisories found.</code></pre>
+  <p><code>make qa</code> spustí <code>php -l</code>, PHP-CS-Fixer, PHPStan na úrovni <code>max</code>,
+  PHPUnit (sady <code>Unit</code> a <code>Integration</code>) a <code>composer audit</code>.
+  Všechno uvnitř kontejneru. Rychlejší kontrola bez testů je <code>make check</code>.</p>
+
+  <h3>Krok 5 – MCP servery pro agenty</h3>
+  <pre><code>make mcp</code></pre>
+  <p>Jednorázově stáhne obraz Playwright MCP a sestaví obraz MCP serveru pro čtení databáze.
+  Agent <code>tester</code> pak ovládá prohlížeč a agent <code>databazista</code> čte databázi
+  přes Docker, ne přes Node.js na tvém počítači.</p>
+
+  <h3>Krok 6 – Claude Code z kořene repa</h3>
+  <aside class="korektura"><strong>Claude Code spouštěj z kořene repa.</strong> Jen tam se
+  načtou <code>.claude/settings.json</code> (oprávnění a hooky), <code>.mcp.json</code> a definice
+  agentů. Ze složky <code>.claude/</code> by pojistky tiše neplatily. Po startu ověř
+  <code>/hooks</code> a <code>/mcp</code>.</aside>
+
+  <h3>Databáze a hesla</h3>
+  <p>Při prvním vytvoření volume <code>t360_db_data</code> spustí MariaDB skript
+  <code>docker/mariadb/init/01-uzivatele.sh</code>. Založí databáze <code>redakce</code> a
+  <code>redakce_test</code> (kolace <code>utf8mb4_czech_ci</code>) a tři uživatele s minimem práv:
+  <code>redakce_app</code> (jen čtení a zápis dat), <code>redakce_migrace</code> (změny schématu)
+  a <code>redakce_cteni</code> (jen <code>SELECT</code>). Kolace ověříš:</p>
+  <pre><code>docker compose exec -T db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -e "SELECT SCHEMA_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE \"redakce%\""'
+redakce	utf8mb4_czech_ci
+redakce_test	utf8mb4_czech_ci</code></pre>
+  <aside class="korektura"><strong>Skript běží jen jednou.</strong> Změníš-li později hesla v
+  <code>.env</code>, v databázi zůstanou původní a aplikace se nepřipojí. Pomůže jen smazat volume
+  (<code>make down</code> a <code>docker volume rm t360_db_data</code>) a tím přijít o data.</aside>
+
+  <h3>Jak to postavili agenti</h3>
+  <p>Plán napsal <code>architekt</code> (<code>docs/plan/001-docker-zaklad.md</code>), člověk ho
+  schválil na bráně 1. <code>devops</code> připravil Docker a <code>Makefile</code>,
+  <code>tester</code> napsal testy dřív než kód a <code>programator</code> je dovedl do zelena.
+  Hook <code>bash-strazce.sh</code> přitom hlídá, aby nikdo nespouštěl <code>php</code>,
+  <code>composer</code> ani <code>npm</code> na hostiteli. Scénáře hooků spustíš <code>make test-hooks</code>.</p>
+
+  <h3>Vyzkoušej sám</h3>
+  <ol class="kroky">
+    <li>Zastav databázi (<code>docker compose stop db</code>), zavolej <code>/zdravi</code> a pak
+    databázi znovu spusť (<code>docker compose start db</code>).</li>
+    <li>Zavolej <code>curl -s -X POST http://localhost:8080/zdravi -D - -o /dev/null</code> a
+    najdi hlavičku <code>Allow</code>.</li>
+    <li>Spusť <code>make down</code> a <code>make up</code> a ověř, že databáze zůstala
+    (<code>docker volume ls -q --filter name=t360_db_data</code>).</li>
+  </ol>
   <!-- AGENT: kapitola spuštění -->
 </section>
 
@@ -464,6 +556,10 @@ crontab -e
 <section class="kapitola" id="slovnicek">
   <h2>Slovníček</h2>
   <dl class="slovnicek">
+    <dt>Compose profil</dt><dd>Štítek služby v <code>compose.yaml</code> (<code>profiles: [mcp]</code>). Služba s profilem se nespustí s <code>make up</code>, jen když ji vyžádáš (<code>--profile mcp</code>).</dd>
+    <dt>Docker</dt><dd>Nástroj, který spouští aplikace v izolovaných kontejnerech z předpřipravených obrazů. Díky němu na počítači nepotřebuješ PHP ani databázi.</dd>
+    <dt>Healthcheck</dt><dd>Příkaz, kterým Docker opakovaně zjišťuje, zda služba opravdu funguje. Až když projde, je kontejner <code>healthy</code> a závislé služby se smí spustit.</dd>
+    <dt>MCP stdio</dt><dd>Způsob připojení MCP serveru, kdy Claude Code spustí proces (u nás <code>docker compose run --rm -T …</code>) a komunikuje s ním přes jeho standardní vstup a výstup. Bez portů a bez sítě.</dd>
     <dt>Agent / subagent</dt><dd>Model s vlastním zadáním, nástroji a kontextem. Subagenta spouští hlavní relace pro dílčí úkol a dostane od něj jen souhrn.</dd>
     <dt>Skill</dt><dd>Složka se <code>SKILL.md</code>: postup nebo znalost, kterou si agent načte, až ji potřebuje, nebo ji spustíš příkazem (<code>/feature</code>).</dd>
     <dt>Hook</dt><dd>Skript, který Claude Code spustí při události (před nástrojem, po editaci, při ukončení). Na rozdíl od promptu se provede vždy.</dd>
