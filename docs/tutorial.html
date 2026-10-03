@@ -100,6 +100,7 @@ ol.kroky{padding-left:1.4rem} ol.kroky > li{margin:.4rem 0}
     <li><a href="#tym">Tým agentů a jak pracuje</a></li>
     <li><a href="#spusteni">Spuštění na svém počítači</a></li>
     <li><a href="#m2">Router, kontejner, šablony a migrace</a></li>
+    <li><a href="#m3">Přihlášení admina</a></li>
     <li><a href="#architektura">Architektura aplikace</a></li>
     <li><a href="#bezpecnost">Bezpečnost v kódu</a></li>
     <li><a href="#ai-01">AI 01 · Perex na jedno kliknutí</a></li>
@@ -447,6 +448,236 @@ curl -s http://localhost:8080/index.php/zdravi -w '\n%{http_code}\n' | tail -1
   <!-- AGENT: kapitola M2 -->
 </section>
 
+<section class="kapitola" id="m3">
+  <h2>Přihlášení admina</h2>
+  <p class="cil">Milník M3: do <code>/admin</code> se dostane jen přihlášený administrátor. Každý formulář je
+  chráněný tokenem proti CSRF, každá odpověď nese bezpečnostní hlavičky a přihlášení i odhlášení se
+  zapíšou do audit logu. První účet vytvoříš příkazem v konzoli, registrace na webu neexistuje.</p>
+
+  <h3>Jak to funguje</h3>
+  <pre class="mermaid">
+flowchart TD
+  P[Požadavek] --> S[SecurityHeadersMiddleware<br/>přidá hlavičky k odpovědi]
+  S --> E[ErrorHandlerMiddleware<br/>404 / 405 / 500]
+  E --> R[RoutingMiddleware<br/>najde trasu]
+  R --> C[CsrfMiddleware<br/>POST: ověří _csrf]
+  C --> A[AdminAccessMiddleware<br/>/admin: je uživatel přihlášen?]
+  A --> K[Kernel::dispatch<br/>controller]
+  A -. nepřihlášen .-> L[303 na /admin/prihlaseni]
+  C -. špatný token .-> F[403 Neplatný formulář]
+  </pre>
+  <p>Řetěz middleware už znáš z M2, nově má pět vrstev. Pořadí není náhoda. Hlavičky jsou nejvnější, aby je
+  dostala i chybová stránka. Routing je před CSRF, takže <code>POST /neexistuje</code> je pořád 404 a
+  <code>POST /zdravi</code> pořád 405, ne 403. Kontrola přihlášení je až za CSRF.</p>
+
+  <h3>Krok 1 – První administrátor</h3>
+  <p>Příkaz <code>admin:vytvor</code> (<code>src/Console/Command/CreateAdminCommand.php</code>) předá práci třídě
+  <code>CreateAdmin</code>, která zkontroluje vstup, zahashuje heslo a uloží uživatele.</p>
+  <pre><code>docker compose exec -T app php bin/konzole admin:vytvor --email=admin@example.cz --jmeno=Administrátor --heslo=dlouhe-heslo-12
+Vytvořen administrátor admin@example.cz (ID 1).
+
+# totéž podruhé
+Uživatel s e-mailem admin@example.cz už existuje.
+
+# krátké heslo
+Heslo musí mít 12 až 4096 znaků.
+
+# chybí --jmeno
+Použití: php bin/konzole admin:vytvor --email=&lt;e-mail&gt; --jmeno=&lt;jméno&gt; [--heslo=&lt;heslo&gt;]
+Bez --heslo se heslo vygeneruje a vypíše jednou.</code></pre>
+  <p>Chyba vrací návratový kód <code>1</code>, úspěch <code>0</code>. E-mail se uloží malými písmeny.
+  Heslo zadané v <code>--heslo</code> zůstane v historii shellu. Proto je tu druhá cesta: bez <code>--heslo</code>
+  se heslo vygeneruje a vypíše jen jednou.</p>
+
+  <h3>Krok 2 – Hash hesla (argon2id)</h3>
+  <p>Heslo se v databázi nikdy neukládá jako text. <code>PasswordHasher</code>
+  (<code>src/Application/Auth/PasswordHasher.php</code>) je tenký obal kolem funkcí PHP:</p>
+  <pre><code>public function hash(string $plain): string
+{
+    return password_hash($plain, PASSWORD_ARGON2ID);
+}</code></pre>
+  <p>Výsledek začíná <code>$argon2id$</code> a obsahuje i náhodnou sůl a parametry, takže stejné heslo dá pokaždé
+  jiný hash. Ověření dělá <code>password_verify</code>. Při přihlášení se ještě zeptáme
+  <code>password_needs_rehash</code>: pokud je uložený hash starší (třeba bcrypt) nebo má slabší parametry,
+  přepočítá se z právě zadaného hesla. Metoda <code>verifyDummy</code> řeší drobnost: u neexistujícího e-mailu
+  ověří heslo proti falešnému hashi, aby odpověď netrvala znatelně kratší a útočník nepoznal, které e-maily
+  v systému jsou.</p>
+
+  <h3>Krok 3 – Session a cookie</h3>
+  <p>HTTP si návštěvníka nepamatuje. Po přihlášení proto server uloží <code>user_id</code> do session a
+  prohlížeči pošle cookie <code>redakce_session</code> s jejím číslem. Celé je to v
+  <code>src/Infrastructure/Session/NativeSession.php</code>, jediném souboru, který sahá na <code>$_SESSION</code>:</p>
+  <pre><code>session_start([
+    'name' => $this->name,
+    'cookie_lifetime' => 0,          // zmizí se zavřením prohlížeče
+    'cookie_path' => '/',
+    'cookie_secure' => $this->secureCookie,
+    'cookie_httponly' => true,       // JavaScript cookie nepřečte
+    'cookie_samesite' => 'Strict',   // cizí web ji s požadavkem nepošle
+    'use_strict_mode' => true,       // server nepřijme vymyšlené číslo session
+    'use_only_cookies' => true,
+]);</code></pre>
+  <p>Session startuje líně, až při prvním čtení nebo zápisu. Veřejné stránky tak žádnou cookie nedostanou
+  (ověříš to níž). Při přihlášení se číslo session vymění (<code>regenerateId</code>), aby útočník nemohl
+  podstrčit své (session fixation). Při odhlášení se session zneplatní.</p>
+
+  <h3>Krok 4 – CSRF token</h3>
+  <p>Představ si, že jsi přihlášený a otevřeš cizí stránku se skrytým formulářem na tvůj web. Prohlížeč by
+  poslal i tvoji cookie. Proti tomu je token: <code>CsrfToken</code> (<code>src/Http/Security/CsrfToken.php</code>)
+  vygeneruje 64 náhodných hex znaků, uloží je do session a vloží je do každého formuláře jako skryté pole
+  <code>_csrf</code>. <code>CsrfMiddleware</code> pak u každé metody mimo <code>GET</code> a <code>HEAD</code>
+  porovná poslaný token s uloženým funkcí <code>hash_equals</code> (porovnání v konstantním čase). Nesedí-li,
+  vrátí 403 „Neplatný formulář“ a controller se vůbec nespustí. V šabloně to vypadá takto:</p>
+  <pre><code>&lt;?= csrf_field($csrfToken) ?&gt;
+&lt;!-- vypíše: &lt;input type="hidden" name="_csrf" value="…"&gt; --&gt;</code></pre>
+  <p>Po přihlášení se token vymění za nový. <code>GET</code> nesmí nic měnit, proto je odhlášení
+  <code>POST /admin/odhlaseni</code>, ne odkaz.</p>
+
+  <h3>Krok 5 – Ochrana /admin</h3>
+  <p><code>AdminAccessMiddleware</code> (<code>src/Http/Middleware/AdminAccessMiddleware.php</code>) chrání všechny cesty
+  <code>/admin</code> a <code>/admin/…</code> kromě <code>/admin/prihlaseni</code>:</p>
+  <pre><code>if ($this->isProtected($request->path) &amp;&amp; $this->auth->user() === null) {
+    return Response::redirect('/admin/prihlaseni');
+}</code></pre>
+  <p>Cesty se porovnávají po segmentech, takže <code>/adminx</code> není administrace. Platí z toho
+  pravidlo: každá nová administrační stránka musí ležet pod <code>/admin/…</code>, jinak ji nic nechrání.
+  Uživatele navíc <code>AuthSession::user()</code> pokaždé načte z databáze. Smazaný účet je tedy při dalším
+  požadavku odhlášen. <code>Response::redirect</code> přijímá jen interní cesty začínající jedním
+  lomítkem, takže z něj nejde udělat přesměrování na cizí web (open redirect).</p>
+
+  <h3>Krok 6 – Bezpečnostní hlavičky</h3>
+  <p><code>SecurityHeadersMiddleware</code> přidá ke každé odpovědi šest hlaviček:</p>
+  <div class="tabulka"><table>
+    <tr><th>Hlavička</th><th>Co brání</th></tr>
+    <tr><td><code>X-Content-Type-Options: nosniff</code></td><td>prohlížeč neodhaduje typ obsahu</td></tr>
+    <tr><td><code>X-Frame-Options: DENY</code></td><td>vložení stránky do cizího rámu (clickjacking)</td></tr>
+    <tr><td><code>Referrer-Policy</code></td><td>únik celé adresy do cizích webů</td></tr>
+    <tr><td><code>Permissions-Policy</code></td><td>kamera, mikrofon a poloha jsou vypnuté</td></tr>
+    <tr><td><code>Cross-Origin-Opener-Policy: same-origin</code></td><td>izolace okna od cizích webů</td></tr>
+    <tr><td><code>Content-Security-Policy</code></td><td>načítání skriptů a obsahu jen z vlastního webu</td></tr>
+  </table></div>
+
+  <h3>Krok 7 – Audit log</h3>
+  <p>Přihlášení, neúspěšné přihlášení, odhlášení a vytvoření účtu zapisuje
+  <code>AdminAuthenticator</code> a <code>CreateAdmin</code> do tabulky <code>audit_log</code> přes rozhraní
+  <code>AuditLogRepository</code>. Druhý zápis (<code>auth.login_failed</code>) obsahuje zkoušený e-mail.
+  Ten pochází od útočníka, proto se ukládá jen jako data (zkrácený na 255 znaků) a při budoucím výpisu se musí
+  escapovat. Hláška při špatném heslu i při neznámém e-mailu je stejná („Neplatné přihlašovací údaje.“),
+  aby web neprozradil, které e-maily existují.</p>
+
+  <h3>Spusť to</h3>
+  <p>Nepřihlášený návštěvník skončí na přihlášení. Cookie přitom vznikla, protože
+  <code>AdminAccessMiddleware</code> musel session přečíst:</p>
+  <pre><code>curl -sD - http://localhost:8080/admin -o /dev/null
+HTTP/1.1 303 See Other
+Set-Cookie: redakce_session=a1e40759…; path=/; HttpOnly; SameSite=Strict
+Location: /admin/prihlaseni
+Cache-Control: no-store
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+...</code></pre>
+  <p>Přihlašovací stránka vrací 200, novou cookie, všechny hlavičky a formulář s tokenem:</p>
+  <pre><code>curl -sD - http://localhost:8080/admin/prihlaseni
+HTTP/1.1 200 OK
+Set-Cookie: redakce_session=3253bfdd…; path=/; HttpOnly; SameSite=Strict
+Content-Security-Policy: default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
+...
+&lt;h1&gt;Přihlášení do administrace&lt;/h1&gt;
+&lt;form method="post" action="/admin/prihlaseni"&gt;
+    &lt;input type="hidden" name="_csrf" value="4d9e918e…"&gt;</code></pre>
+  <p>Teď odešli formulář. <code>curl</code> si cookie sám nepamatuje, předáváš ji ručně hlavičkou
+  <code>-H 'Cookie: …'</code> (v ukázce je znak <code>@</code> zapsaný jako <code>%40</code>):</p>
+  <pre><code># bez cookie a tokenu
+curl -s http://localhost:8080/admin/prihlaseni -X POST -d 'email=admin%40example.cz&amp;password=dlouhe-heslo-12' -D - -o /dev/null
+HTTP/1.1 403 Forbidden
+
+# se správným tokenem, ale špatným heslem
+curl -s http://localhost:8080/admin/prihlaseni -X POST -H 'Cookie: redakce_session=3253bfdd…' -d '_csrf=4d9e918e…&amp;email=admin%40example.cz&amp;password=spatne-heslo' -D - -o /dev/null
+HTTP/1.1 422
+
+# se správným heslem
+curl -s http://localhost:8080/admin/prihlaseni -X POST -H 'Cookie: redakce_session=3253bfdd…' -d '_csrf=4d9e918e…&amp;email=admin%40example.cz&amp;password=dlouhe-heslo-12' -D - -o /dev/null
+HTTP/1.1 303 See Other
+Set-Cookie: redakce_session=69698084…; path=/; HttpOnly; SameSite=Strict
+Location: /admin
+
+# administrace s novou cookie
+curl -s http://localhost:8080/admin -H 'Cookie: redakce_session=69698084…'
+&lt;h1&gt;Administrace&lt;/h1&gt;
+&lt;p&gt;Přihlášen(a) jako Administrátor&lt;/p&gt;</code></pre>
+  <p>Všimni si, že po přihlášení dostaneš <strong>jinou</strong> cookie než před ním (<code>3253…</code> →
+  <code>6969…</code>). To je <code>regenerateId</code>. Veřejná stránka cookie nedostane:</p>
+  <pre><code>curl -sD - http://localhost:8080/ -o /dev/null
+HTTP/1.1 200 OK
+Cache-Control: no-store
+X-Content-Type-Options: nosniff
+...      (žádný řádek Set-Cookie)</code></pre>
+  <p>Nakonec se podívej do databáze (Adminer na <a href="http://localhost:8081">localhost:8081</a>, server
+  <code>db</code>), co se zapsalo:</p>
+  <pre><code>SELECT LEFT(password_hash, 10) FROM users;     -- $argon2id$
+SELECT id, action, user_id, summary, ip_address FROM audit_log ORDER BY id;
+1  user.created       NULL  admin@example.cz
+2  auth.login_failed  1     admin@example.cz     172.19.0.1
+3  auth.login         1                          172.19.0.1</code></pre>
+  <p>IP adresa je v Dockeru adresa brány sítě, ne skutečného návštěvníka.</p>
+
+  <aside class="korektura"><strong>Výukový režim: co tu záměrně chybí.</strong>
+    <ul>
+      <li>Omezení počtu pokusů o přihlášení. Útočník může hádat hesla bez limitu. Neúspěšné pokusy se
+      aspoň zapisují do audit logu.</li>
+      <li>Timeouty session. Session žije do zavření prohlížeče, ne 30 minut nečinnosti nebo 8 hodin celkem.</li>
+      <li>CSP s nonce. Politika je statická a funguje jen proto, že aplikace nemá inline skripty ani styly.</li>
+      <li>Cookie s atributem <code>Secure</code> a prefixem <code>__Host-</code>. V dev běží web přes HTTP,
+      cookie se proto jmenuje <code>redakce_session</code> a <code>Secure</code> se zapíná až proměnnou
+      <code>SESSION_COOKIE_SECURE=1</code> v produkci.</li>
+    </ul>
+    Vše je v backlogu: omezení pokusů, timeouty a CSP s nonce v milníku M8, <code>Secure</code> cookie v M9.
+    Do skutečného provozu s tím nenasazuj.</aside>
+
+  <h3>Bezpečnost</h3>
+  <ul>
+    <li>Hesla: argon2id, minimálně 12 znaků, maximálně 4096 (delší heslo by zbytečně zatížilo server hashováním).</li>
+    <li>Session fixation: <code>use_strict_mode</code>, nové číslo session při přihlášení a odhlášení.</li>
+    <li>CSRF: token u každého <code>POST</code>, <code>hash_equals</code>, <code>SameSite=Strict</code> jako druhá vrstva.</li>
+    <li>Výčet účtů: stejná hláška i kód 422 pro špatné heslo i neznámý e-mail, vyrovnaný čas.</li>
+    <li>Open redirect: <code>Response::redirect</code> přijímá jen interní cesty.</li>
+    <li>Kdo smí do administrace: kontrola je podle prefixu cesty. Nová stránka mimo <code>/admin/…</code> není chráněná.</li>
+  </ul>
+
+  <h3>Jak to postavili agenti</h3>
+  <p>Plán <code>docs/plan/003-prihlaseni-admin.md</code> napsal <code>architekt</code> a člověk ho schválil na
+  bráně 1. <code>tester</code> psal testy napřed (testovací dvojníci session a repozitářů jsou v
+  <code>tests/Unit/Support/</code>), <code>programator</code> postavil nejdřív vrstvu bez HTTP (uživatelé,
+  audit, příkaz) a pak HTTP část. Bezpečnostní revize v tomto milníku nebyla (výukový režim), proto je výše
+  rámeček s tím, co chybí.</p>
+
+  <h3>Vyzkoušej sám</h3>
+  <ol class="kroky">
+    <li>Vytvoř druhého admina bez <code>--heslo</code> a přihlas se vypsaným heslem.</li>
+    <li>Pošli <code>POST /admin/odhlaseni</code> bez tokenu. Jaký dostaneš kód a zůstaneš přihlášený?</li>
+    <li>Zkus <code>GET /adminx</code> a <code>GET /admin/neco</code> bez přihlášení. Proč se liší?</li>
+  </ol>
+
+  <details class="kviz"><summary>Kvíz (3 otázky)</summary>
+    <p>1. Proč je <code>RoutingMiddleware</code> před <code>CsrfMiddleware</code>?</p>
+    <details><summary>Odpověď</summary><p>Aby <code>POST</code> na neexistující adresu zůstal 404 a <code>POST /zdravi</code> 405. Kdyby CSRF běželo první, vrátily by obě 403.</p></details>
+    <p>2. Proč se při přihlášení vymění číslo session?</p>
+    <details><summary>Odpověď</summary><p>Aby útočník, který měl číslo session před přihlášením, nezískal přístup po něm (session fixation).</p></details>
+    <p>3. Proč je odhlášení <code>POST</code> s tokenem a ne odkaz?</p>
+    <details><summary>Odpověď</summary><p><code>GET</code> nesmí měnit stav. Odkaz by mohl odhlásit uživatele třeba přes obrázek na cizím webu, což je CSRF.</p></details>
+  </details>
+
+  <dl class="slovnicek">
+    <dt>Audit</dt><dd>Zápis o tom, kdo a kdy co udělal, v tabulce <code>audit_log</code>.</dd>
+    <dt>Cookie</dt><dd>Text uložený v prohlížeči a posílaný serveru s každým požadavkem. Session cookie nese číslo session.</dd>
+    <dt>CSRF</dt><dd>Útok podvržením formuláře z cizího webu. Brání mu tajný token ve formuláři.</dd>
+    <dt>Hash</dt><dd>Jednosměrný otisk hesla (argon2id). Z otisku se heslo nedá spočítat zpět.</dd>
+    <dt>Middleware řetěz</dt><dd>Pořadí vrstev, kterými prochází požadavek: hlavičky, chyby, routing, CSRF, přístup do administrace.</dd>
+    <dt>Session</dt><dd>Data návštěvníka na serveru, rozpoznaná podle cookie.</dd>
+  </dl>
+  <!-- AGENT: kapitola M3 -->
+</section>
+
 <section class="kapitola" id="architektura">
   <h2>Architektura aplikace</h2>
   <div class="zastupny">Doplní agent podle <code>docs/architektura.md</code> po milníku M2.</div>
@@ -737,11 +968,17 @@ crontab -e
     <dt>Brána (gate)</dt><dd>Místo v procesu, kde se čeká na rozhodnutí člověka.</dd>
     <dt>Environment (GitHub)</dt><dd>Pojmenované cílové prostředí s vlastními secrets a pravidly schvalování nasazení.</dd>
     <dt>GHCR</dt><dd>GitHub Container Registry — úložiště Docker obrazů vedle repozitáře.</dd>
+    <dt>Audit (audit log)</dt><dd>Tabulka <code>audit_log</code>, do které aplikace zapisuje, kdo, kdy a co udělal (přihlášení, odhlášení, vytvoření účtu). Slouží k dohledání, co se stalo.</dd>
     <dt>Cizí klíč</dt><dd>Sloupec odkazující na řádek jiné tabulky. Hlídá, aby odkaz nevisel do prázdna.</dd>
+    <dt>Cookie</dt><dd>Malý text, který si prohlížeč uloží od serveru a posílá mu ho zpět s každým dalším požadavkem. Session cookie nese jen číslo session.</dd>
+    <dt>CSRF</dt><dd>Útok, při kterém cizí web přiměje prohlížeč přihlášeného uživatele odeslat formulář na tvou stránku. Brání mu tajný token, který zná jen tvůj formulář.</dd>
     <dt>DI kontejner</dt><dd>Objekt, který vytváří třídy a doplňuje jim závislosti podle konstruktoru.</dd>
+    <dt>Hash (hash hesla)</dt><dd>Jednosměrný otisk hesla. Z hesla se spočítá snadno, z otisku se heslo zpět získat nedá. U nás argon2id, záměrně pomalý a paměťově náročný.</dd>
     <dt>Middleware</dt><dd>Vrstva kolem zpracování požadavku, např. zachytávání chyb.</dd>
+    <dt>Middleware řetěz</dt><dd>Seznam middleware, kterým požadavek prochází od nejvnější vrstvy dovnitř a odpověď zpět ven. Každá vrstva může požadavek pustit dál, nebo rovnou odpovědět.</dd>
     <dt>Migrace</dt><dd>Soubor s kódem pro změnu schématu databáze, který jde provést i vrátit.</dd>
     <dt>Router</dt><dd>Část aplikace, která podle metody a cesty vybere controller.</dd>
+    <dt>Session</dt><dd>Data o jednom návštěvníkovi uložená na serveru. Prohlížeč pozná „svoji“ session podle cookie s jejím číslem.</dd>
     <!-- AGENT: doplňuj pojmy z dalších kapitol (abecedně) -->
   </dl>
 </section>

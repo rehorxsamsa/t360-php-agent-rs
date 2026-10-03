@@ -61,7 +61,7 @@ stránky, konzoli a migrátor. `App\Container` je technické jádro bez závislo
 kontejner smí volat jen kompoziční kořen a `Kernel` (dispečer), controllery dostávají závislosti
 konstruktorem.
 
-M3 (plán 003, návrh) — odchylky od zásady „bezp. hlavičky → session → CSRF → autentizace →
+M3 (plán 003, implementováno) — odchylky od zásady „bezp. hlavičky → session → CSRF → autentizace →
 autorizace“: párování trasy se přesouvá do `RoutingMiddleware` **před** CSRF (zachová 404/405 pro
 neexistující trasy); session není vrstva, ale líná služba (`Http\Session\Session`, implementace
 `Infrastructure\Session\NativeSession`) — veřejné stránky nedostanou cookie; autentizace a autorizace
@@ -142,7 +142,7 @@ sequenceDiagram
     participant T as TemplateRenderer
     F->>DI: require config/container.php
     F->>KE: get(Kernel)->handle(Request::fromGlobals())
-    KE->>EH: MiddlewarePipeline (M3 přidá další vrstvy)
+    KE->>EH: MiddlewarePipeline (stav M2; od M3 jsou v řetězu i SecurityHeaders, Routing, Csrf a AdminAccess)
     EH->>KE: $next(request) → dispatch
     KE->>R: match(method, path)
     alt trasa nalezena

@@ -1,5 +1,5 @@
 # 003 – Přihlášení admina, ochrana /admin, CSRF, bezpečnostní hlavičky a audit přihlášení
-Stav: návrh
+Stav: hotovo
 
 - **Milník:** M3 · **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP, bez kola security review
 - **Autor:** agent architekt · **Datum:** 2026-10-03

@@ -36,10 +36,26 @@ služby zdravé. Další cíle vypíše `make help`.
 |---|---|
 | Aplikace (titulní stránka) | <http://localhost:8080/> |
 | Kontrola zdraví | <http://localhost:8080/zdravi> |
+| Administrace (jen přihlášený admin) | <http://localhost:8080/admin> |
+| Přihlášení do administrace | <http://localhost:8080/admin/prihlaseni> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
 serverem `db`, uživatelem `redakce_app` a heslem `DB_PASSWORD` z `.env`.
+
+## První administrátor
+Do administrace se nelze zaregistrovat, účet vytvoří příkaz v konzoli (po `make migrate`):
+
+```bash
+docker compose exec -T app php bin/konzole admin:vytvor --email=admin@example.cz --jmeno=Administrátor --heslo=dlouhe-heslo-12
+```
+
+Heslo musí mít aspoň 12 znaků. Bez `--heslo` se heslo vygeneruje a vypíše jen jednou. Pak se přihlas na
+<http://localhost:8080/admin/prihlaseni>. Heslo zadané přes `--heslo` zůstane v historii shellu, pro skutečné
+nasazení proto použij vygenerované.
+
+Session cookie má v dev režimu `HttpOnly; SameSite=Strict`, ale ne `Secure` (vývoj běží přes HTTP).
+Za HTTPS (produkce) nastav v `.env` `SESSION_COOKIE_SECURE=1`, jinak prohlížeč cookie posílá i po HTTP.
 
 Testy: `make test` (nebo `make qa`). Integrační testy schématu mažou a znovu vytvářejí tabulky
 v databázi `redakce_test`, proto dvě sady testů nesmí běžet paralelně nad `redakce_test`.
@@ -70,9 +86,9 @@ a pro vývoj stačí. Chceš-li začít znovu s novými hesly, smaž volume: `ma
 |---|---|
 | `src/`, `public/`, `tests/` | aplikace, front controller, testy |
 | `config/` | kompoziční kořen: `container.php` (kontejner), `routes.php` (trasy) |
-| `templates/` | PHP šablony (`layout`, `home`, `error`), výstup přes `e()` |
+| `templates/` | PHP šablony (`layout`, `home`, `error`, `admin/`), výstup přes `e()` |
 | `database/migrations/` | migrace schématu (`RRRRMMDDHHMM_popis.php`) |
-| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav` |
+| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor` |
 | `docker/`, `compose.yaml`, `Makefile` | prostředí v Dockeru |
 | `.claude/`, `.mcp.json`, `.githooks/` | tým agentů, hooky, MCP servery |
 | `docs/` | zadání, architektura, ADR, plány, tutoriál |
