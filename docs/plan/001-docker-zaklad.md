@@ -1,5 +1,5 @@
 # 001 – Docker základ, kostra aplikace, Makefile, composer nástroje a /zdravi
-Stav: návrh
+Stav: schváleno
 
 - **Milník:** M1 (bez CI — `ci.yml` je samostatný plán 002, viz Mimo rozsah)
 - **Autor:** agent architekt · **Datum:** 2026-10-03
@@ -445,3 +445,9 @@ healthcheckem/PHPStanem, sloučit je do jednoho):
     `8080:80`, doporučeno), nebo `nginxinc/nginx-unprivileged` (další obraz, interně port 8080)?
 13. **Spouštění Claude Code:** potvrďte, že relace poběží z `/home/q/projects/t360-php-agent-rs`
     (ne z `.claude/`) — jinak hooky a permissions neplatí.
+
+## Rozhodnutí člověka (2026-10-03)
+Člověk schválil plán, ADR-0002, ADR-0003 i všechny závislosti („schvaluji vše“). Otázky 1–13
+se řeší podle doporučení v textu plánu (make+curl na hostiteli, context7 vzdáleně, DB port 3307
+ponechán, CI jako samostatný plán 002, fail-closed hooky, zúžený allowlist, nginx UID 101,
+relace z kořene repa). Tabulky a sloupce DB: anglicky (ADR-0003), upřesní se před M2.

@@ -1,5 +1,5 @@
 # ADR-0003: Identifikátory v kódu anglicky, česky jen to, co vidí uživatel
-- **Stav:** navrženo
+- **Stav:** přijato
 - **Datum:** 2026-10-03
 - **Autor:** agent architekt
 

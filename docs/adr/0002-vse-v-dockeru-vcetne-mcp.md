@@ -1,5 +1,5 @@
 # ADR-0002: Vše v Dockeru včetně MCP serverů („pravidlo 0“)
-- **Stav:** navrženo
+- **Stav:** přijato
 - **Datum:** 2026-10-03
 - **Autor:** agent architekt (rozhodnutí „pravidlo 0“ učinil člověk, tento ADR ho zpřesňuje)
 
