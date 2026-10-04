@@ -13,6 +13,8 @@ Dále (ověřeno 2026-10-03, režim B M5): URL musí být doslovně `http://loca
 
 Playwright MCP v tomto prostředí **nevidí** `http://web/` (ERR_NAME_NOT_RESOLVED) → používat `http://localhost:8080`.
 Screenshot uložit s **absolutní** cestou `/home/q/projects/t360-php-agent-rs/tests/_artefakty/…`.
+Úspora kroků (M6, 2026-10-04): celý scénář jedním `browser_run_code_unsafe` (přihlášení, selectOption, Promise.all
+s waitForNavigation, kontrola dialogů přes `page.on('dialog')`, Tab smyčka s activeElement pro klávesnici).
 
 **Why:** hook chrání před `curl -d @soubor` (exfiltrace souborů); kontroluje text příkazu, ne sémantiku.
 **How to apply:** úpravy `tests/E2E-scenare.md` dělat nástrojem Edit/Write, ne přes Bash; v curl příkladech psát
