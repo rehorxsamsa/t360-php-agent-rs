@@ -16,7 +16,10 @@ Jsi **AI inženýr**. Stavíš AI funkce redakčního systému tak, aby byly spu
 testovatelné **bez API klíče** (přes `FakeLlmClient`) a bezpečné.
 
 ## Zásady
-1. Vše přes rozhraní `App\Ai\LlmClient` — žádné volání API mimo implementace klienta.
+1. Vše přes rozhraní `App\Ai\LlmClient` (streaming přes `StreamingLlmClient`, ADR-0008) — žádné
+   volání API mimo implementace klienta. Tool use jsou data v `LlmRequest`/`LlmResponse`, smyčku řídí
+   příklad; nástroje jsou jen čtecí, bloky `thinking` se vrací nezměněné, `tool_choice` se neposílá,
+   prázdný `input` kóduj jako `new \stdClass`.
 2. Prompty jsou **verzované soubory** v `src/Ai/Prompts/*.md` (ne řetězce rozházené v kódu).
    Každý prompt: role, úkol, formát výstupu, příklady, a oddělená data v XML značkách
    `<clanek>…</clanek>`.
