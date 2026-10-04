@@ -59,3 +59,6 @@ se zmírňují ve prospěch rychlého spuštění a ukázky práce agentů; nemu
 - **M8:** `audit_log.created_at` a seedované články jsou v UTC, aplikace píše v Europe/Prague (přijaté riziko); omezení pokusů o přihlášení, timeouty session, CSP s nonce.
 - **Nápad:** `/favicon.ico` vrací 404 (drobná chyba v konzoli prohlížeče).
 - **Testovací účty v dev DB:** `admin@example.cz`, `qa-m3@example.test`, `t2b-test@example.cz` (jen lokální výuková data).
+
+## Číslování plánů
+Plán CI (`ci.yml`) původně slíbený jako 002 dostane číslo **007 nebo pozdější** (002–006 jsou M2–M6).
