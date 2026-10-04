@@ -15,13 +15,15 @@ metadata:
   `templates/`) jsou v kontejneru jen ke čtení — pro čtení stačí, prod obraz (M9) je musí kopírovat.
 - Číslování plánů: 002 = M2, 003 = M3 (přihlášení), 004 = M4 (veřejná část, zúžená; rubriky/štítky/
   hledání = M4b), 005 = M5 (administrace článků, zúžená; CRUD rubrik/štítků = M5b), 006 = M6 (AI jádro,
-  tabulka `ai_calls`, migrace `202610030007`); CI (slibované už od 001) dostane 007 nebo další volné. Migrační heslo v `app` je od M2. Backlog M4b/M5b má být ve
-  STAV.md — po M4 tam chyběl, ověř.
+  tabulka `ai_calls`, migrace `202610030007`), **007 = M8** (audit log, opravy, tutoriál; M7 přeskočen v pořadí);
+  návrh M7 = 008, CI = 009 (ověř v STAV.md). Migrační heslo v `app` je od M2.
 - Seed (M4 návrh): `database/seeds/demo_content.php` vrací objekt `Infrastructure\Seed\Seed`, příkaz
   `db:seed` (otázka 3 plánu 004), běží jako `redakce_app`, jen doplňuje podle slugu, nic nemaže.
 - Časy: PHP `Europe/Prague`, MariaDB v UTC → v SQL nepoužívat `NOW()` pro `published_at`, čas přes `Clock`.
   Totéž `created_at`/`updated_at` (DEFAULT / ON UPDATE CURRENT_TIMESTAMP běží v UTC) → plán 005 je zapisuje
-  explicitně z `Clock`; `audit_log.created_at` a seedované články zůstávají v UTC (řešit v M8).
+  explicitně z `Clock`. **ADR-0007 (plán 007, navrženo):** sloupec plněný DB = UTC (`audit_log.created_at`,
+  `users.*_at`, `migrations`), plněný aplikací z `Clock` = Praha; `ConnectionFactory` připíchne `time_zone '+00:00'`,
+  převod při čtení jen v repozitáři; seed od M8 píše časy článků explicitně. Ověř, zda ADR přijat.
 - `EMULATE_PREPARES=false` → pojmenovaný parametr nelze v jednom dotazu použít dvakrát.
 
 **Why:** rozpory mezi skilly a ADR se opakují; tým jinak dostává protichůdné pokyny.

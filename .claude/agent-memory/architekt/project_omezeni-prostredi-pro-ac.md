@@ -26,6 +26,12 @@ metadata:
 - **nginx `fastcgi_read_timeout 30s`** (`docker/nginx/default.conf`) — dlouhá volání (LLM) potřebují zvýšit
   (plán 006 navrhl 120 s). **`Session` ukládá jen `string|int`** → strukturovaná data přes JSON.
   Kontejner `app` dostává jen proměnné vyjmenované v `compose.yaml` `environment:` (`.env` je `/dev/null`).
+- **Playwright MCP testera v praxi nevidí `http://web/`** (ERR_NAME_NOT_RESOLVED, používá `http://localhost:8080`) —
+  AC psát s pravidlem z hlavičky `tests/E2E-scenare.md`, ne natvrdo `http://web`.
+- **Stavový řádek 422 bez textu** (`HTTP/1.1 422 `): FPM/nginx text pro 422 nemají; plán 007 navrhl `header('HTTP/1.1 …')`.
+  V AC s curl neočekávat text důvodu u kódů, které tabulka v `Response` nepokrývá.
+- **`.env` v kontejneru je `/dev/null`** → rada „nastav v `.env`“ platí jen pro proměnné, které `compose.yaml` předává
+  (`SESSION_COOKIE_SECURE` nepředává; README to do M8 tvrdilo chybně).
 - **Kolace `utf8mb4_czech_ci` + PAD SPACE**: `WHERE slug = ?` ignoruje velikost písmen a koncové mezery →
   slug z URL validovat regexem před dotazem.
 
