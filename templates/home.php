@@ -6,6 +6,11 @@
  */
 ?>
 <h1>Nejnovější články</h1>
+<form action="/hledani" method="get" role="search" class="search-form search-form--main">
+    <label for="main-q">Fulltextové vyhledávání v popisech a zdrojových textech článků</label>
+    <input type="search" id="main-q" name="q" maxlength="100" required>
+    <button type="submit">Hledat</button>
+</form>
 <?php if ($page->articles === []) : ?>
 <p>Zatím tu nejsou žádné publikované články.</p>
 <?php else : ?>

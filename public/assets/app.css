@@ -425,3 +425,55 @@ form input[type="date"] {
 .audit-table td:first-child {
     white-space: nowrap;
 }
+
+.page-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem;
+    max-width: 64rem;
+    margin: 0 auto;
+}
+
+.page-body main {
+    flex: 1 1 32rem;
+    min-width: 0;
+    margin: 0;
+}
+
+.sidebar {
+    flex: 0 1 14rem;
+    padding: 1rem;
+}
+
+.search-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.search-form label {
+    flex: 1 0 100%;
+    font-weight: 600;
+}
+
+.search-form input[type="search"] {
+    flex: 1 1 8rem;
+    min-width: 0;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    font: inherit;
+    background: #fff;
+    color: var(--text);
+}
+
+.search-form--main {
+    margin-bottom: 1.5rem;
+}
+
+mark {
+    background: #ffe66d;
+    color: var(--text);
+    padding: 0 0.1em;
+}

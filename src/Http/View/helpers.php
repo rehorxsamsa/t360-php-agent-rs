@@ -47,3 +47,37 @@ if (!function_exists('czech_date')) {
         return $date->format('j') . '. ' . $months[(int) $date->format('n')] . ' ' . $date->format('Y');
     }
 }
+
+if (!function_exists('highlight')) {
+    /**
+     * Escapuje text a hledaný výraz obalí do `<mark>` (bez ohledu na velikost písmen).
+     * Výsledek je bezpečné HTML: výraz se hledá v původním textu, ten se escapuje po kouscích.
+     */
+    function highlight(string $text, string $query): string
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return e($text);
+        }
+
+        $parts = preg_split('/(' . preg_quote($query, '/') . ')/iu', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($parts === false) {
+            return e($text);
+        }
+
+        $html = '';
+        foreach ($parts as $index => $part) {
+            $html .= $index % 2 === 1 ? '<mark>' . e($part) . '</mark>' : e($part);
+        }
+
+        return $html;
+    }
+}
+
+if (!function_exists('contains_ci')) {
+    /** Obsahuje text hledaný výraz (bez ohledu na velikost písmen)? */
+    function contains_ci(string $text, string $query): bool
+    {
+        return $query !== '' && mb_stripos($text, $query) !== false;
+    }
+}

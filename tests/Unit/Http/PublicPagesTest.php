@@ -114,6 +114,50 @@ final class PublicPagesTest extends TestCase
         return $result;
     }
 
+    private function repositoryForSearch(): InMemoryArticleRepository
+    {
+        return new InMemoryArticleRepository()
+            ->addArticle('v-titulku', 'Docker pro vývojáře', 'x', excerpt: 'Perex')
+            ->addArticle('v-perexu', 'Titulek', 'x', excerpt: 'Použijte <b>docker</b> denně', publishedAt: '2026-09-02 08:00:00')
+            ->addArticle('v-textu', 'Jiný', "Text s DOCKER composem", publishedAt: '2026-09-03 08:00:00');
+    }
+
+    public function test_search_finds_in_title_excerpt_and_body_and_highlights(): void
+    {
+        $response = $this->get($this->repositoryForSearch(), '/hledani?q=docker');
+
+        self::assertSame(200, $response->status);
+        self::assertStringContainsString('<mark>Docker</mark> pro vývojáře', $response->body);
+        self::assertStringContainsString('Použijte &lt;b&gt;<mark>docker</mark>&lt;/b&gt; denně', $response->body);
+        self::assertStringContainsString('href="/clanek/v-textu"', $response->body);
+        self::assertStringContainsString('Shoda je v textu článku', $response->body);
+    }
+
+    public function test_search_escapes_query_and_handles_empty_and_no_result(): void
+    {
+        $repository = $this->repositoryForSearch();
+
+        $xss = $this->get($repository, '/hledani?q=%3Cscript%3E');
+        self::assertStringNotContainsString('<script>', $xss->body);
+        self::assertStringContainsString('nebyl nalezen žádný článek', $xss->body);
+
+        $empty = $this->get($repository, '/hledani');
+        self::assertSame(200, $empty->status);
+        self::assertStringContainsString('Zadejte hledaný výraz', $empty->body);
+    }
+
+    public function test_search_form_is_on_homepage_and_in_sidebar_of_every_page(): void
+    {
+        $repository = $this->repositoryWithDetail();
+
+        foreach (['/', '/clanek/ukazka-markdownu', '/hledani?q=x', '/neexistuje'] as $uri) {
+            $response = $this->get($repository, $uri);
+            self::assertStringContainsString('<aside class="sidebar"', $response->body, $uri);
+            self::assertStringContainsString('action="/hledani"', $response->body, $uri);
+        }
+        self::assertStringContainsString('id="main-q"', $this->get($repository, '/')->body);
+    }
+
     public function test_homepage_lists_ten_newest_articles_with_pagination_to_next(): void
     {
         $response = $this->get($this->repositoryWithTwelve(), '/');

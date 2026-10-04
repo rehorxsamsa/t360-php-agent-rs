@@ -10,12 +10,14 @@ use App\Http\Controller\Admin\LoginController;
 use App\Http\Controller\ArticleController;
 use App\Http\Controller\HealthController;
 use App\Http\Controller\HomeController;
+use App\Http\Controller\SearchController;
 use App\Http\Routing\Router;
 
 /** Tabulka tras: nová stránka = jeden řádek zde + controller. */
 return static function (Router $router): void {
     $router->get('/', [HomeController::class, 'index']);
     $router->get('/clanek/{slug}', [ArticleController::class, 'show']);
+    $router->get('/hledani', [SearchController::class, 'index']);
     $router->get('/zdravi', [HealthController::class, '__invoke']);
 
     // Administrace: ochranu prefixu /admin zajišťuje AdminAccessMiddleware (veřejné je jen přihlášení).
