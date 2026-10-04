@@ -43,6 +43,8 @@ služby zdravé. Další cíle vypíše `make help`.
 | Přihlášení do administrace | <http://localhost:8080/admin/prihlaseni> |
 | Správa článků (seznam, úprava, smazání) | <http://localhost:8080/admin/clanky> |
 | Nový článek | <http://localhost:8080/admin/clanky/novy> |
+| AI nástroje (přehled, spotřeba tokenů, poslední volání) | <http://localhost:8080/admin/ai> |
+| AI příklad 01–05 (např. perex) | <http://localhost:8080/admin/ai/01> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
@@ -61,6 +63,32 @@ nasazení proto použij vygenerované.
 
 Session cookie má v dev režimu `HttpOnly; SameSite=Strict`, ale ne `Secure` (vývoj běží přes HTTP).
 Za HTTPS (produkce) nastav v `.env` `SESSION_COOKIE_SECURE=1`, jinak prohlížeč cookie posílá i po HTTP.
+
+## AI příklady (M6)
+Pět AI příkladů (perex, SEO, štítky a rubrika, kontrola před publikací, překlad) běží **bez API klíče**
+přes falešný klient (`AI_PROVIDER=falesny`, nic se neúčtuje, cena je jen orientační). Spuštění z konzole
+(po `make migrate`):
+
+```bash
+docker compose exec -T app php bin/konzole ai:priklad 01
+docker compose exec -T app php bin/konzole ai:priklad 04 --clanek=demo-injection
+docker compose exec -T app php bin/konzole ai:priklad 05 --model=claude-haiku-4-5-20251001
+```
+
+Volby: `--clanek=demo|demo-injection|ID` (výchozí `demo`), `--model=ID` (jen příklad 05). V prohlížeči
+se přihlas jako admin a otevři `/admin/ai`. Proměnné v `.env` (výchozí hodnoty jsou v `.env.example`):
+
+| Proměnná | Význam |
+|---|---|
+| `AI_PROVIDER` | `falesny` (výchozí, bez sítě) nebo `anthropic` (skutečné Claude API) |
+| `ANTHROPIC_API_KEY` | klíč k API, potřebný jen pro `anthropic`; **jen v `.env`, nikdy v repozitáři** |
+| `AI_MODEL` | model pro generování textu (výchozí `claude-sonnet-5-5`) |
+| `AI_MODEL_LEVNY` | levnější model pro klasifikaci (výchozí `claude-haiku-4-5-20251001`) |
+| `AI_DENNI_LIMIT_TOKENU` | denní limit tokenů všech volání (výchozí `200000`) |
+
+Skutečné API zapneš tak, že do `.env` doplníš `AI_PROVIDER=anthropic` a `ANTHROPIC_API_KEY=…` a spustíš `make up`.
+Kvůli ceně se po každém volání zapisují do tabulky `ai_calls` jen metadata (tokeny, cena, trvání), nikdy texty.
+Výklad je v kapitole „AI jádro“ v [`docs/tutorial.html`](docs/tutorial.html).
 
 Testy: `make test` (nebo `make qa`). Integrační testy schématu mažou a znovu vytvářejí tabulky
 v databázi `redakce_test`, proto dvě sady testů nesmí běžet paralelně nad `redakce_test`.
@@ -91,10 +119,10 @@ a pro vývoj stačí. Chceš-li začít znovu s novými hesly, smaž volume: `ma
 |---|---|
 | `src/`, `public/`, `tests/` | aplikace, front controller, testy |
 | `config/` | kompoziční kořen: `container.php` (kontejner), `routes.php` (trasy) |
-| `templates/` | PHP šablony (`layout`, `home`, `article`, `error`, `admin/`, `admin/articles/`), výstup přes `e()` |
+| `templates/` | PHP šablony (`layout`, `home`, `article`, `error`, `admin/`, `admin/articles/`, `admin/ai/`), výstup přes `e()` |
 | `database/seeds/` | ukázková data (`demo_content.php`), nahrává je `make seed` |
 | `database/migrations/` | migrace schématu (`RRRRMMDDHHMM_popis.php`) |
-| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed` |
+| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed`, `ai:priklad NN` |
 | `docker/`, `compose.yaml`, `Makefile` | prostředí v Dockeru |
 | `.claude/`, `.mcp.json`, `.githooks/` | tým agentů, hooky, MCP servery |
 | `docs/` | zadání, architektura, ADR, plány, tutoriál |

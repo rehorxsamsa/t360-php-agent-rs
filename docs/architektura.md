@@ -1,12 +1,13 @@
 # Architektura — Redakční systém (t360)
 
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plány 001–004, M1–M4 — hotovo;
-> plán 005 M5 administrace článků — implementováno).
+> plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — implementováno).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
 > [ADR-0004](adr/0004-anglicke-nazvy-v-databazi.md) anglické názvy v DB ·
-> [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer.
+> [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer ·
+> [ADR-0006](adr/0006-vlastni-llm-klient-curl.md) vlastní LLM klient přes cURL (navrženo).
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -30,21 +31,24 @@ flowchart LR
         C --> V["TemplateRenderer + e()<br/>templates/*.php<br/>MarkdownRenderer, czech_date (M4)"]
     end
     subgraph Con["App\\Console (M2)"]
-        CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)"]
+        CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)<br/>ai:priklad (M6)"]
     end
     subgraph App["App\\Application — use-cases"]
         UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)"]
     end
     subgraph Dom["App\\Domain — entity, VO, rozhraní repozitářů"]
-        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
+        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>AiCallRepository + AiCall, TokenUsage (M6)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
     end
     subgraph Inf["App\\Infrastructure — PDO, migrace, config"]
-        R["Pdo*Repository (vč. PdoArticleRepository M4,<br/>PdoArticleAdminRepository, PdoCategory/TagRepository M5)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
+        R["Pdo*Repository (vč. PdoArticleRepository M4,<br/>PdoArticleAdminRepository, PdoCategory/TagRepository M5,<br/>PdoAiCallRepository M6)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
         MG["Migration\\Migrator<br/>PdoMigrationRepository<br/>database/migrations/*.php<br/>Seed + database/seeds/*.php (M4)"]
     end
-    subgraph Ai["App\\Ai (M6+)"]
-        L["LlmClient: AnthropicClient,<br/>OllamaClient, FakeLlmClient"]
+    subgraph Ai["App\\Ai (M6, plán 006 + ADR-0006)"]
+        EX["Examples: ExampleRunner, ExampleRegistry,<br/>Example01…05, StructuredCall, PromptLibrary<br/>AiUsageReport, AiConfig, Cost\\ModelCatalog"]
+        L["LlmClient (port) = MeteredLlmClient<br/>(denní limit + log ai_calls)<br/>→ FakeLlmClient | AnthropicClient<br/>→ HttpTransport (CurlHttpTransport)"]
+        EX --> L
     end
+    API["Claude Messages API<br/>api.anthropic.com"]
     DI -.->|sestavuje| K
     DI -.->|sestavuje| CA
     K -.->|"get(controller)"| DI
@@ -53,7 +57,11 @@ flowchart LR
     UC --> I
     R -.->|implementuje| I
     CA --> MG
-    UC --> L
+    C -->|"M6: Admin\\AiController"| EX
+    CA -->|"ai:priklad"| EX
+    EX --> I
+    L --> I
+    L -.->|"HTTPS, jen s AI_PROVIDER=anthropic"| API
 ```
 
 Stav po M1: `Kernel` s pevně zadrátovanou cestou `/zdravi`, rozhraní `Domain\Health\DatabaseHealth`
@@ -85,6 +93,14 @@ veřejné `ArticleRepository` zůstává jen pro publikované. Validace formulá
 a `Slug::uniqueAmong` nad jedním dotazem `takenSlugs`. Článek a jeho štítky se ukládají v transakci
 repozitáře, audit `article.*` až po ní. `created_at`/`updated_at` zapisuje repozitář z `Clock` (výchozí
 hodnoty DB jsou v UTC). Admin URL používají ID (`/admin/clanky/{id}/upravit`), PRG + `Http\Session\Flash`.
+
+M6 (plán 006, implementováno) — AI jde `Admin\AiController` / `ai:priklad` → `ExampleRunner` → příklad 01–05 →
+`LlmClient`. Pod rozhraním `LlmClient` kontejner vždy registruje dekorátor `MeteredLlmClient` (denní limit tokenů
+`AI_DENNI_LIMIT_TOKENU` s rezervací `max_tokens`, cena z `config/ai-models.php`, zápis metadat do `ai_calls`) nad
+`FakeLlmClient` (bez sítě, výchozí) nebo `AnthropicClient` (cURL přes `HttpTransport`, retry jen 429/500/529).
+Strukturovaný výstup přes `output_config.format` + validace v PHP (ADR-0006; vynucený nástroj `claude-sonnet-5-5`
+odmítá). Článek jde do promptu v `<clanek>` značkách, výstup modelu se jen zobrazuje přes `e()` a nikam se neukládá;
+výsledek přežije PRG v session (`ExampleResultStash`).
 
 ## 2. Běhové prostředí (dev, `compose.yaml`, projekt `t360`)
 Hostitel má jen `docker`, `git`, `bash`, `jq` (+ `make`, `curl` — čeká na schválení). Žádné PHP ani Node.
@@ -230,6 +246,22 @@ erDiagram
     migrations {
         varchar name PK
         datetime executed_at
+    }
+    users ||--o{ ai_calls : "user_id (SET NULL), M6"
+    ai_calls {
+        bigint id PK
+        bigint user_id FK
+        varchar example_id
+        varchar provider
+        varchar model
+        int input_tokens
+        int output_tokens
+        int cache_creation_input_tokens
+        int cache_read_input_tokens
+        decimal cost_usd
+        int duration_ms
+        enum status "ok, error"
+        datetime created_at
     }
 ```
 Vše `InnoDB`, `utf8mb4_czech_ci`. Migrace spouští `bin/konzole migrace:spust` (`make migrate`)
