@@ -5,6 +5,88 @@ tým agentů v Claude Code, člověk zadává a schvaluje. Podrobný návod je v
 [`docs/tutorial.html`](docs/tutorial.html), pravidla pro agenty v [`AGENTS.md`](AGENTS.md)
 a [`CLAUDE.md`](CLAUDE.md).
 
+## Použité technologie, funkcionality a dovednosti
+Řazeno od nejdůležitějšího (to, bez čeho aplikace nefunguje a co ji definuje) po podpůrné nástroje.
+Verze jsou ty, které běží v prostředí (`composer.json`, `compose.yaml`, `docker/`).
+
+### 1. Jádro aplikace
+| Technologie | Verze | K čemu |
+|---|---|---|
+| PHP | 8.4 (`~8.4.1`, v kontejneru 8.4.26), PHP-FPM na Debianu 13 (trixie) | celá aplikace: čisté OOP bez frameworku, `strict_types`, `final readonly` třídy, typované konstanty, enumy |
+| MariaDB | 11.8.9 | databáze (články, rubriky, štítky, uživatelé, audit log, záznamy AI volání), kolace `utf8mb4_czech_ci` |
+| PDO + `pdo_mysql` | součást PHP | přístup k databázi, výhradně prepared statements, SQL jen ve třídách `*Repository` |
+| Docker + Docker Compose | – | celé prostředí (PHP, nginx, DB, Adminer, MCP servery); na hostiteli není PHP ani Node |
+| nginx | 1.30.5 (alpine) | webový server před PHP-FPM, port 8080 |
+
+### 2. Funkcionality aplikace
+1. **Veřejná část:** titulní stránka se stránkováním (10 článků na stranu), detail článku, kontrola zdraví `/zdravi`.
+2. **Fulltextové vyhledávání** (`/hledani`) v titulku, perexu i textu článků se zvýrazněním výrazu; formulář na hlavní stránce i v sidebaru všech stránek.
+3. **Administrace** (jen role `admin`): seznam, vytvoření, úprava a smazání článků (koncept, publikováno, archiv, datum zveřejnění), každý článek má rubriku a štítky.
+4. **Přihlášení:** hesla `password_hash` s Argon2id, omezení pokusů o přihlášení, účet admina vytváří jen konzole.
+5. **Audit log:** záznam změn s filtrem podle akce a data (časy v UTC, zobrazení v Europe/Prague).
+6. **Vlastní Markdown renderer** pro text článků (ADR-0005), bezpečné HTML.
+7. **Vlastní infrastruktura bez frameworku:** DI kontejner, router, pipeline middlewarů, migrátor databáze, šablony v čistém PHP s escapováním `e()`.
+8. **Konzole** `bin/konzole`: migrace, `admin:vytvor`, `db:seed`, `ai:priklad NN`.
+9. **Bezpečnost:** CSRF token u každého POST, session cookie `HttpOnly; SameSite=Strict`, bezpečnostní hlavičky, tři databázové účty s odstupňovanými právy (DML, DDL, jen čtení).
+
+### 3. AI část (zvláštní kapitola)
+Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamování a nástroje ADR-0008).
+
+| Oblast | Konkrétně |
+|---|---|
+| Poskytovatel | **Claude API (Anthropic) – Messages API**, hlavička `anthropic-version: 2023-06-01`; přepínač `AI_PROVIDER=falesny\|anthropic` |
+| Modely | `claude-sonnet-5-5` (generování textu, 2 / 10 USD za milion vstupních / výstupních tokenů), `claude-haiku-4-5-20251001` (levná klasifikace, 1 / 5 USD); ceník v `config/ai-models.php` |
+| Falešný klient | `FakeLlmClient` – všechny příklady i testy se dají spustit bez API klíče a bez sítě |
+| Rozhraní | `LlmClient` a `StreamingLlmClient`; dekorátor `MeteredLlmClient` měří tokeny a cenu |
+| Structured output | JSON podle schématu + validace v PHP a opakování s chybovou zprávou (`StructuredCall`) |
+| Tool use | agent s nástroji `hledej_clanky` a `nacti_clanek` (jen čtení), smyčka volání nástrojů |
+| Streaming | SSE (Server-Sent Events): `AnthropicStreamReader`, `SseParser`, `SseWriter`; text se zobrazuje průběžně |
+| Prompt caching | `cache_control: ephemeral` na systémovém promptu; cena zahrnuje zápis i čtení cache |
+| Prompty | verzované Markdown soubory v `src/Ai/Prompts/` (role, pravidla, formát výstupu), načítá `PromptLibrary` |
+| Náklady | tabulka `ai_calls` (jen metadata: tokeny, cena, trvání, stav – nikdy texty), denní limit tokenů `AI_DENNI_LIMIT_TOKENU` |
+| Bezpečnost LLM | obsah článků i výstup modelu je nedůvěryhodný vstup (obrana proti prompt injection), validace a escapování výstupu, nástroje jen čtou |
+
+**Sedm AI příkladů** (`docs/ai-priklady/`, konzole `ai:priklad NN`, v prohlížeči `/admin/ai`):
+
+| # | Příklad | Co ukazuje |
+|---|---|---|
+| 01 | Perex na jedno kliknutí | první volání API, system prompt, `max_tokens`, cena |
+| 02 | SEO titulek a meta popis | structured output (JSON), validace, opakování |
+| 03 | Štítky a rubrika | klasifikace levným modelem, enum ve schématu, prompt caching |
+| 04 | Kontrola před publikací | tón, osobní údaje, faktická rizika; obrana proti prompt injection |
+| 05 | Překlad CZ → EN | zachování Markdownu, porovnání silnějšího a levnějšího modelu |
+| 06 | Asistent psaní | streaming odpovědi (SSE) |
+| 07 | Zeptej se redakce | tool use: model sám hledá a čte články |
+
+### 4. Kvalita a testování
+| Nástroj | Verze | K čemu |
+|---|---|---|
+| PHPUnit | 13.4 | unit a integrační testy (testy napřed, TDD) |
+| PHPStan | 2.2 (level max) | statická analýza |
+| PHP-CS-Fixer | 3.95 | styl kódu PSR-12 / PER-CS |
+| Composer | 2.x | závislosti, `composer audit` (bezpečnost balíčků), skripty `check`, `test`, `qa` |
+| Playwright MCP | 0.0.82 | E2E scénáře v prohlížeči |
+| Makefile, git hooky | – | `make up/qa/migrate/seed`, kontrola formátu commitu a PHP před commitem |
+
+### 5. Vývoj týmem AI agentů (Claude Code)
+| Prvek | Popis |
+|---|---|
+| Claude Code | hlavní relace jako vedoucí týmu (orchestrátor), člověk jako product owner schvaluje brány |
+| 8 subagentů (`.claude/agents/`) | architekt, databazista, programator, ai-inzenyr, tester, security-reviewer, devops, technicky-spisovatel |
+| Skills (`.claude/skills/`) | `feature`, `commit`, `audit`, `retro`, `ai-integrace`, `bezpecnost-owasp`, `db-migrace`, `devops-kontrakt`, `php-oop-standardy`, `tutorial-kapitola` |
+| Hooky (`.claude/hooks/`) | hlídání nebezpečných příkazů a chráněných souborů, PHP lint, brána před commitem, DB jen pro čtení |
+| MCP servery | context7 (aktuální dokumentace knihoven), Playwright (prohlížeč), MariaDB jen pro čtení (Node 24, Docker) |
+| Postup | `AGENTS.md` / `CLAUDE.md`, plán → testy → implementace → ověření → revize → dokumentace, ADR v `docs/adr/` |
+
+### 6. Dovednosti, které projekt procvičuje
+1. Objektově orientované PHP 8.4 bez frameworku (vrstvy Domain / Application / Infrastructure / Http / Ai, DI, repository, middleware).
+2. Integrace LLM: prompt engineering, structured output, tool use, streaming, řízení nákladů.
+3. Bezpečnost webu a LLM aplikací (OWASP Top 10, OWASP Top 10 pro LLM, ASVS).
+4. Návrh relačního schématu, migrace a práce s MariaDB.
+5. Docker, Docker Compose a nasazovací kontrakt (VPS Debian 13).
+6. Testování: TDD, statická analýza, E2E v prohlížeči.
+7. Práce s týmem AI agentů: delegace, schvalovací brány, revize, dokumentace (ADR, tutoriál).
+
 ## Požadavky na hostiteli
 Na svém počítači (Linux nebo WSL2) potřebuješ jen:
 
