@@ -329,3 +329,58 @@ form button.button-danger,
     font-size: 1rem;
     color: var(--muted);
 }
+
+/* AI nástroje: přehled spotřeby, tabulka volání a výsledek příkladu (výstup modelu jako prostý text). */
+.ai-examples {
+    padding-left: 1.25rem;
+}
+
+.ai-examples li {
+    margin-bottom: 0.75rem;
+}
+
+.ai-examples .field-hint {
+    margin: 0.125rem 0 0;
+}
+
+.ai-calls .number {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.ai-result {
+    margin-top: 2rem;
+    padding: 0 1rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+}
+
+.ai-fields dt {
+    margin-top: 0.75rem;
+    font-weight: 600;
+}
+
+.ai-fields dd {
+    margin: 0.25rem 0 0;
+}
+
+.ai-value,
+.ai-output {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-output {
+    max-height: 24rem;
+    overflow: auto;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: #f6f8fa;
+    font-size: 0.875rem;
+}
+
+.ai-meta {
+    color: var(--muted);
+    font-size: 0.875rem;
+}

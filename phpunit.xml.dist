@@ -17,6 +17,12 @@
             <directory>tests/Integration</directory>
         </testsuite>
     </testsuites>
+    <groups>
+        <exclude>
+            <!-- Skutečná volání Claude API (plán 006, AC 32) jen ručně: vendor/bin/phpunit s volbou group live -->
+            <group>live</group>
+        </exclude>
+    </groups>
     <source>
         <include>
             <directory>src</directory>

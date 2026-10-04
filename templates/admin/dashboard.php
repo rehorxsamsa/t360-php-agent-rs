@@ -9,6 +9,7 @@
 <nav aria-label="Správa obsahu">
     <ul>
         <li><a href="/admin/clanky">Články</a></li>
+        <li><a href="/admin/ai">AI nástroje</a></li>
     </ul>
 </nav>
 <form method="post" action="/admin/odhlaseni">

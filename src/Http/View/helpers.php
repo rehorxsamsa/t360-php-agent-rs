@@ -26,6 +26,14 @@ if (!function_exists('csrf_field')) {
     }
 }
 
+if (!function_exists('czech_number')) {
+    /** České číslo: mezera jako oddělovač tisíců, desetinná čárka (`1 234`, `0,007000`). */
+    function czech_number(int|float $value, int $decimals = 0): string
+    {
+        return number_format($value, $decimals, ',', ' ');
+    }
+}
+
 if (!function_exists('czech_date')) {
     /** České datum bez rozšíření intl: `3. října 2026` (měsíc ve 2. pádě). */
     function czech_date(DateTimeInterface $date): string

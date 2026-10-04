@@ -2,6 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Ai\AiConfig;
+use App\Ai\AiProvider;
+use App\Ai\Client\AnthropicClient;
+use App\Ai\Client\CurlHttpTransport;
+use App\Ai\Client\FakeLlmClient;
+use App\Ai\Client\HttpTransport;
+use App\Ai\Client\MeteredLlmClient;
+use App\Ai\Cost\ModelCatalog;
+use App\Ai\LlmClient;
+use App\Ai\PromptLibrary;
+use App\Console\Command\AiExampleCommand;
 use App\Console\Command\CreateAdminCommand;
 use App\Console\Command\MigrateCommand;
 use App\Console\Command\MigrationStatusCommand;
@@ -9,6 +20,7 @@ use App\Console\Command\RollbackCommand;
 use App\Console\Command\SeedCommand;
 use App\Console\ConsoleApplication;
 use App\Container\Container;
+use App\Domain\Ai\AiCallRepository;
 use App\Domain\Article\ArticleAdminRepository;
 use App\Domain\Article\ArticleRepository;
 use App\Domain\Audit\AuditLogRepository;
@@ -30,6 +42,7 @@ use App\Infrastructure\Config\DatabaseConfig;
 use App\Infrastructure\Migration\Migrator;
 use App\Infrastructure\Migration\PdoMigrationRepository;
 use App\Infrastructure\Persistence\ConnectionFactory;
+use App\Infrastructure\Persistence\PdoAiCallRepository;
 use App\Infrastructure\Persistence\PdoArticleAdminRepository;
 use App\Infrastructure\Persistence\PdoArticleRepository;
 use App\Infrastructure\Persistence\PdoAuditLogRepository;
@@ -94,6 +107,11 @@ $container->set(
     static fn(Container $c): TagRepository => new PdoTagRepository($c->get(\PDO::class)),
 );
 
+$container->set(
+    AiCallRepository::class,
+    static fn(Container $c): AiCallRepository => new PdoAiCallRepository($c->get(\PDO::class)),
+);
+
 $container->set(Clock::class, static fn(): Clock => new SystemClock());
 
 // Session startuje líně; Secure cookie zapíná produkce proměnnou SESSION_COOKIE_SECURE=1 (dev běží přes HTTP).
@@ -135,8 +153,50 @@ $container->set(
         'migrace:stav' => MigrationStatusCommand::class,
         'admin:vytvor' => CreateAdminCommand::class,
         'db:seed' => SeedCommand::class,
+        'ai:priklad' => AiExampleCommand::class,
     ]),
 );
+
+// AI: konfigurace z prostředí, ceník modelů, HTTP přes cURL a klient. Kontejner vždy skládá
+// MeteredLlmClient (limit, cena, log) nad falešným nebo Anthropic klientem podle AI_PROVIDER.
+$container->set(
+    AiConfig::class,
+    static fn(): AiConfig => AiConfig::fromEnvironment(getenv()),
+);
+
+$container->set(
+    ModelCatalog::class,
+    static fn(): ModelCatalog => ModelCatalog::fromFile($root . '/config/ai-models.php'),
+);
+
+$container->set(
+    HttpTransport::class,
+    static fn(): HttpTransport => new CurlHttpTransport(),
+);
+
+$container->set(
+    PromptLibrary::class,
+    static fn(): PromptLibrary => new PromptLibrary($root . '/src/Ai/Prompts'),
+);
+
+$container->set(LlmClient::class, static function (Container $c): LlmClient {
+    $config = $c->get(AiConfig::class);
+    $catalog = $c->get(ModelCatalog::class);
+
+    $inner = match ($config->provider) {
+        AiProvider::Fake => new FakeLlmClient(),
+        AiProvider::Anthropic => new AnthropicClient($c->get(HttpTransport::class), $catalog, $config->apiKey),
+    };
+
+    return new MeteredLlmClient(
+        $inner,
+        $catalog,
+        $c->get(AiCallRepository::class),
+        $c->get(Clock::class),
+        $config->provider,
+        $config->dailyTokenLimit,
+    );
+});
 
 // Seed běží jako aplikační účet (stačí DML); samotný příkaz odmítne prostředí mimo dev|test.
 $container->set(
