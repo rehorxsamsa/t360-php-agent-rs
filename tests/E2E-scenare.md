@@ -1,8 +1,18 @@
 # E2E scénáře
 
-Konvence: curl běží z hostitele na `http://localhost:8080`; Playwright (v Dockeru, síť compose)
-míří na `http://web`. Snímky se ukládají do `tests/_artefakty/` (ignorováno gitem).
-Předpoklad: `make up` proběhl, `AI_PROVIDER=falesny`.
+Konvence: curl běží z hostitele na `http://localhost:8080`. Snímky se ukládají do `tests/_artefakty/`
+(ignorováno gitem) s **absolutní** cestou. Předpoklad: `make up` proběhl, `AI_PROVIDER=falesny`.
+
+**Pravidlo URL pro Playwright (platí pro všechny oddíly níže):** Playwright MCP otevírá `http://web/…`
+(prohlížeč v síti compose). Když `browser_navigate` skončí `ERR_NAME_NOT_RESOLVED` (MCP prohlížeč v síti compose
+neběží), použije se tatáž cesta na `http://localhost:8080/…`. Zápis `http://web/…` ve scénářích znamená
+„podle tohoto pravidla“.
+
+**Pravidla hooku pro curl (z hostitele):** URL doslovně `http://localhost:8080/…`, **bez uvozovek** a bez proměnných;
+povolené volby mimo jiné `-s`, `-I`, `-i`, `-D -`, `-m N`, `-w '…'`, `-H '…'`, `-d …`, `-X GET|HEAD|POST`;
+`-o` jen `/dev/null`; zavináč v `-d` psát jako `%40` (`admin%40example.cz`), diakritiku a závorky kódovat ručně
+(`%C5%BD`, `%28`, `%29`); `--data-urlencode` a `-X PUT` nejsou povolené (405 pro PUT ověřují unit testy);
+cookie jen přes `-H 'Cookie: redakce_session=…'`.
 
 ## Zdraví aplikace
 
@@ -191,8 +201,8 @@ Veřejná část je jen čtení (GET), žádný formulář.
 
 Plán: `docs/plan/005-sprava-clanku.md` (AC 36–39). Předpoklad: `make up`, `make migrate`, `make seed`,
 admin „Administrátor“ z P5 (`admin@example.cz`). Pravidla hooku pro curl: URL bez uvozovek, zavináč v `-d` jako `%40`,
-cookie jen přes `-H 'Cookie: redakce_session=…'`. Playwright běží v síti compose → `http://web/`.
-Snímky do `tests/_artefakty/`.
+cookie jen přes `-H 'Cookie: redakce_session=…'`. Playwright: URL podle pravidla v hlavičce souboru (`http://web/`,
+při `ERR_NAME_NOT_RESOLVED` `http://localhost:8080/`). Snímky do `tests/_artefakty/`.
 
 ### A1: nepřihlášený a POST bez tokenu (negativní, curl)
 1. MCP (`redakce_cteni`): `SELECT COUNT(*) FROM articles` → zapsat si počet N.
@@ -273,8 +283,8 @@ Snímky do `tests/_artefakty/`.
 Plán: `docs/plan/006-ai-jadro.md` (AC 30–33). Předpoklad: `make up`, `make migrate`, `make seed`, admin z P5,
 `AI_PROVIDER=falesny` (bez klíče – nic se neúčtuje, ceny jsou orientační). Pravidla hooku pro curl: URL bez uvozovek
 a bez proměnných, zavináč v `-d` jako `%40`, `-o` jen `/dev/null`, cookie jen přes `-H 'Cookie: redakce_session=…'`,
-`-X PUT` nejde (405 ověřuje unit test `AdminAiTest`). Playwright MCP: `http://web/` (v prostředí, kde jméno `web`
-nejde přeložit, `http://localhost:8080/`). Snímky s absolutní cestou do `tests/_artefakty/`.
+`-X PUT` nejde (405 ověřuje unit test `AdminAiTest`). Playwright MCP: URL podle pravidla v hlavičce souboru.
+Snímky s absolutní cestou do `tests/_artefakty/`.
 
 ### I1: prostředí a konzole (curl, docker)
 1. `docker compose exec app php -m` → seznam obsahuje `curl`.
@@ -368,3 +378,98 @@ nejde přeložit, `http://localhost:8080/`). Snímky s absolutní cestou do `tes
 2. Ruční grep: šablony `templates/admin/ai/*.php` vypisují výstup modelu jen přes `e()`, žádný `MarkdownRenderer`;
    každý `<form method="post">` má `csrf_field`.
 3. Regrese M5 (A7) a `/zdravi` → `200`.
+
+## Audit log a opravy (M8)
+
+Plán: `docs/plan/007-audit-a-dokonceni.md` (AC 16–18, 25–28), časy podle `docs/adr/0007-casy-v-databazi-utc-vs-praha.md`
+(`audit_log.created_at` v DB v UTC, na stránce pražský čas). Předpoklad: `make up`, `make migrate`, `make seed`, admin z P5.
+curl a Playwright podle pravidel v hlavičce souboru. Unit testy: `AdminAuditLogTest`, `AuditLogSearchTest`,
+`ResponseReasonPhraseTest`, `RequestListTest`, `FaviconTest`, `AdminAiTest`; integrační: `PdoAuditLogRepositoryTest`,
+`DemoContentSeedTest`.
+
+### U1: stavový řádek s textem důvodu (AC 16, curl)
+1. `curl -s -I http://localhost:8080/zdravi` → první řádek `HTTP/1.1 200 OK`.
+2. `curl -s -I http://localhost:8080/neexistuje` → první řádek `HTTP/1.1 404 Not Found`.
+3. `curl -s -X POST http://localhost:8080/zdravi -D - -o /dev/null` → `HTTP/1.1 405 Method Not Allowed`, `Allow: GET`.
+4. Přihlašovací stránka podle P2 (cookie a `_csrf`), pak
+   `curl -s -X POST http://localhost:8080/admin/prihlaseni -H 'Cookie: redakce_session=<cookie>' -d email=admin%40example.cz -d password=spatne -d _csrf=<token> -D - -o /dev/null`
+   → první řádek přesně `HTTP/1.1 422 Unprocessable Content` (dřív `HTTP/1.1 422 ` bez textu).
+5. Totéž bez `_csrf` → `HTTP/1.1 403 Forbidden`.
+
+### U2: vnořené pole formuláře u příkladu 05 (AC 17, curl + MCP)
+1. MCP (`redakce_cteni`): `SELECT COUNT(*) FROM ai_calls` → zapsat si N.
+2. Přihlásit se podle P2–P3, `_csrf` vzít z formuláře `GET /admin/ai/05` (s cookie).
+3. `curl -s -X POST http://localhost:8080/admin/ai/05 -H 'Cookie: redakce_session=<cookie>' -d article=demo -d model%5B%5D%5B%5D=x -d _csrf=<token> -o /dev/null -w '%{http_code}'`
+   → `422`; bez `-o /dev/null -w …` tělo obsahuje „Vyberte model ze seznamu.“ v `role="alert"`.
+4. Kontrola i pro jednoúrovňové pole: `-d model%5B%5D=x` → `422`, stejná hláška.
+5. MCP: `SELECT COUNT(*) FROM ai_calls` → stále N (žádné volání AI; dřív vnořené pole prošlo jako výchozí model).
+
+### U3: ikona webu (AC 18, curl + Playwright)
+1. `curl -s -o /dev/null -w '%{http_code} %{content_type}' http://localhost:8080/assets/favicon.svg` → `200 image/svg+xml`.
+2. `curl -s http://localhost:8080/ | grep -c 'rel="icon"'` → `1`; řádek je
+   `<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">`.
+3. `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/favicon.ico` → `404` (záměrně, otázka 7 plánu).
+4. Playwright: `browser_navigate` na `http://web/` a pak `http://web/admin/prihlaseni`; po každém
+   `browser_network_requests` neobsahuje `/favicon.ico` se stavem `404` a `browser_console_messages` (level `error`) je prázdné.
+   V záložce prohlížeče je ikona (písmeno „R“).
+
+### U4: nepřihlášený a chybné vstupy (AC 26, curl)
+1. `curl -s http://localhost:8080/admin/audit -D - -o /dev/null` → `303`, `Location: /admin/prihlaseni`.
+2. `curl -s -X POST http://localhost:8080/admin/audit -o /dev/null -w '%{http_code}'` → `405` (routing je před CSRF,
+   proto ne `403`); `-D -` ukáže `Allow: GET`.
+3. Přihlásit se podle P2–P3 (e-mail v `-d` jako `admin%40example.cz`). S cookie:
+   - `curl -s http://localhost:8080/admin/audit -H 'Cookie: redakce_session=<cookie>' -o /dev/null -w '%{http_code}'` → `200`;
+   - `curl -s http://localhost:8080/admin/audit?od=2026-13-01 -H 'Cookie: redakce_session=<cookie>' -D -` → `422`
+     a tělo obsahuje „Zadejte datum od ve tvaru RRRR-MM-DD.“ (souhrn `role="alert"`, bez tabulky);
+   - `…/admin/audit?do=3.10.2026` → `422`, „Zadejte datum do ve tvaru RRRR-MM-DD.“;
+   - `…/admin/audit?od=2026-10-04&do=2026-10-03` → `422`, „Datum od nesmí být pozdější než datum do.“
+     (v shellu `&` v URL bez uvozovek escapovat jako `\&`; když to hook odmítne, stačí unit test AC 7);
+   - `…/admin/audit?akce=xyz` → `422`, „Vyberte akci ze seznamu.“;
+   - `…/admin/audit?akce%5B%5D=x` → `200` (pole v query se ignoruje, výpis bez filtru);
+   - `…/admin/audit?strana=999`, `?strana=0`, `?strana=abc`, `?strana=01` → `404` „Stránka nenalezena“;
+   - `…/admin/audit/1` → `404`.
+4. Žádné z těl neobsahuje `SQLSTATE` ani `Stack trace`; žádná odpověď není `500`.
+
+### U5: audit log v prohlížeči (AC 27, Playwright + MCP)
+1. Playwright: přihlásit se jako admin (P4) → rozcestník `/admin` má odkaz „Audit log“ → kliknout.
+2. URL `/admin/audit`, nadpis „Audit log“, „Počet záznamů: N“, formulář filtru (Akce / Od / Do, „Filtrovat“,
+   „Zrušit filtr“), tabulka se sloupci Čas, Akce, Uživatel, Objekt, Shrnutí, IP adresa.
+3. První řádek: akce „Přihlášení“, uživatel „Administrátor“, čas = aktuální pražský čas (± 2 min) ve tvaru
+   „4. října 2026 14:05:09“; `<time datetime>` má posun `+02:00` (letní čas) / `+01:00` (zimní).
+   Snímek `/home/q/projects/t360-php-agent-rs/tests/_artefakty/admin-audit-m8.png`.
+4. MCP (`redakce_cteni`): `SELECT created_at FROM audit_log ORDER BY id DESC LIMIT 1` → tentýž okamžik v UTC
+   (v letním čase o 2 h méně než na stránce, v zimním o 1 h) – ukázka pravidla ADR-0007.
+5. Odhlásit se, zkusit přihlášení se špatným heslem (vznikne `auth.login_failed`), přihlásit se znovu → `/admin/audit`.
+6. Vybrat akci „Neúspěšné přihlášení“, Od a Do = dnešní datum → „Filtrovat“ → URL
+   `/admin/audit?akce=auth.login_failed&od=RRRR-MM-DD&do=RRRR-MM-DD`; v tabulce jen „Neúspěšné přihlášení“, uživatel „—“,
+   shrnutí = zadaný e-mail; formulář ukazuje vybraný filtr (volba `selected`, data ve `value`).
+7. Je-li víc než 50 záznamů (bez filtru): „Další strana“ vede na `/admin/audit?strana=2`, s filtrem akce na
+   `/admin/audit?akce=…&strana=2` (filtr zůstane, pořadí parametrů `akce`, `od`, `do`, `strana`); „Předchozí strana“
+   ze strany 2 vede na adresu bez `strana`. Při méně záznamech stránkování ověřují unit testy (AC 8) – krok informativní.
+8. „Zrušit filtr“ → `/admin/audit`, zase všechny akce.
+9. Filtr bez shody (např. akce „Vytvoření účtu“, je-li v DB žádná) → „Filtru neodpovídá žádný záznam.“, formulář zůstane.
+10. Neplatné datum v prohlížeči: přes `browser_evaluate`
+    `() => { const i = document.querySelector('#od'); i.type = 'text'; i.value = '2026-13-01'; }` a „Filtrovat“ →
+    HTTP `422` (`browser_network_requests`), „Zadejte datum od ve tvaru RRRR-MM-DD.“ v `role="alert"`,
+    pole má `aria-invalid="true"`.
+11. Escapování: na přihlašovací stránce přes `browser_evaluate` změnit u pole e-mailu `type` na `text`, zadat
+    `<script>alert(1)</script>` a špatné heslo → po přihlášení je v audit logu shrnutí vidět jako text, žádný dialog
+    (`page.on('dialog')` nic nezachytí).
+12. Klávesnice: celý tok jen klávesnicí (`Tab` na „Audit log“, `Enter`, `Tab` do výběru akce, šipky, `Tab` na data,
+    `Tab` na „Filtrovat“, `Enter`); zaostřený prvek má viditelný obrys.
+13. `browser_resize` na 375 px: pole filtru pod sebou, tabulka se posouvá uvnitř svého obalu (`.table-wrapper`),
+    stránka nemá vodorovný posuvník.
+14. `browser_console_messages` (level `error`) prázdné – žádná chyba CSP ani 404 ikony.
+15. Informativně (ne FAIL) MCP: `EXPLAIN SELECT a.id FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+    WHERE a.action = 'auth.login' ORDER BY a.created_at DESC, a.id DESC LIMIT 50` → `possible_keys` obsahuje
+    `idx_audit_log_action_created_at`; bez `WHERE` → `idx_audit_log_created_at` nebo plný průchod u malé tabulky.
+
+### U6: časy seedu a regrese (AC 19, 28)
+1. `make seed` → výstup hlásí počty včetně dorovnaných časů (klíč „časy“); druhé spuštění → 0 nových článků i 0 časů.
+2. MCP: `SELECT slug, created_at, updated_at, published_at FROM articles WHERE created_by IS NULL AND updated_by IS NULL ORDER BY slug`
+   → `created_at = updated_at = published_at` (do 30. 9. 2026), jinak `2026-09-01 08:00:00` (koncepty, `planovany-clanek`).
+3. Playwright: `/admin/clanky` → u seedovaných článků „Naposledy upraveno“ v pražském čase, např. „1. září 2026 08:00“
+   (ne posunuté o 2 h).
+4. Regrese: M5 A7, M6 I8, `curl -s http://localhost:8080/zdravi -w '\n%{http_code}\n'` → `{"stav":"ok","db":"ok"}` a `200`;
+   přihlášení a odhlášení (P3/P4) dál funguje a každé přibude v audit logu.
+5. `make qa` → kód 0; `git diff --stat composer.json composer.lock` prázdné.

@@ -1,5 +1,5 @@
 # ADR-0007: Časy v databázi – co plní databáze, je v UTC; co plní aplikace, je v Europe/Prague
-- **Stav:** navrženo (schvaluje člověk na bráně 1 plánu 007)
+- **Stav:** přijato (schváleno člověkem na bráně 1 plánu 007)
 - **Datum:** 2026-10-04
 - **Autor:** agent architekt
 - **Souvisí:** [plán 007](../plan/007-audit-a-dokonceni.md), [plán 005](../plan/005-sprava-clanku.md) (čas z `Clock`),

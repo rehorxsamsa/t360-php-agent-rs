@@ -1,5 +1,5 @@
 # 007 – Audit log v administraci, opravy z backlogu a dokončení tutoriálu
-Stav: návrh
+Stav: hotovo
 
 - **Milník:** M8 (zadání: „Audit (`/audit`), opravy, dokončení tutoriálu“; uživatelský příběh 9) ·
   **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP, bez kola security review

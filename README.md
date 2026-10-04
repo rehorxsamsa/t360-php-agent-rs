@@ -43,6 +43,7 @@ služby zdravé. Další cíle vypíše `make help`.
 | Přihlášení do administrace | <http://localhost:8080/admin/prihlaseni> |
 | Správa článků (seznam, úprava, smazání) | <http://localhost:8080/admin/clanky> |
 | Nový článek | <http://localhost:8080/admin/clanky/novy> |
+| Audit log (jen admin, filtr podle akce a data) | <http://localhost:8080/admin/audit> |
 | AI nástroje (přehled, spotřeba tokenů, poslední volání) | <http://localhost:8080/admin/ai> |
 | AI příklad 01–05 (např. perex) | <http://localhost:8080/admin/ai/01> |
 | Adminer (správa databáze) | <http://localhost:8081> |
@@ -62,7 +63,14 @@ Heslo musí mít aspoň 12 znaků. Bez `--heslo` se heslo vygeneruje a vypíše 
 nasazení proto použij vygenerované.
 
 Session cookie má v dev režimu `HttpOnly; SameSite=Strict`, ale ne `Secure` (vývoj běží přes HTTP).
-Za HTTPS (produkce) nastav v `.env` `SESSION_COOKIE_SECURE=1`, jinak prohlížeč cookie posílá i po HTTP.
+Je to záměr: dev compose proměnnou `SESSION_COOKIE_SECURE` kontejneru `app` vůbec nepředává a soubor `.env`
+kontejner nevidí (hodnoty dostává jen přes `environment:` v `compose.yaml`), takže řádek v `.env` by nic nezměnil.
+Produkční `compose.prod.yaml` (M9) za HTTPS musí dát `SESSION_COOKIE_SECURE: "1"` do `environment:` služby `app`
+(čte ji jen `config/container.php`), jinak prohlížeč cookie posílá i po HTTP.
+
+**Časy:** audit log (`audit_log.created_at`) se v databázi ukládá v UTC, protože čas doplňuje databáze. Na stránce
+`/admin/audit` se zobrazuje v pražském čase (Europe/Prague), takže se hodnota v Admineru liší o 1–2 hodiny.
+Pravidlo, proč a kde se čas převádí, je v [ADR-0007](docs/adr/0007-casy-v-databazi-utc-vs-praha.md).
 
 ## AI příklady (M6)
 Pět AI příkladů (perex, SEO, štítky a rubrika, kontrola před publikací, překlad) běží **bez API klíče**

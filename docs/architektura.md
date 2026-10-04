@@ -2,7 +2,7 @@
 
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-04 (plány 001–004, M1–M4 — hotovo;
 > plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — hotovo;
-> plán 007 M8 audit log, opravy, tutoriál — navrženo).
+> plán 007 M8 audit log, opravy, tutoriál — implementováno).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -104,7 +104,7 @@ Strukturovaný výstup přes `output_config.format` + validace v PHP (ADR-0006; 
 odmítá). Článek jde do promptu v `<clanek>` značkách, výstup modelu se jen zobrazuje přes `e()` a nikam se neukládá;
 výsledek přežije PRG v session (`ExampleResultStash`).
 
-M8 (plán 007, navrženo) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
+M8 (plán 007, implementováno) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
 bez CSRF) → `AuditLogSearch` (Application: validace `akce`/`od`/`do`, 50 na stránku) → `AuditLogRepository::count` +
 `search` (Domain) ← `PdoAuditLogRepository` (dva dotazy, `LEFT JOIN users`, indexy `created_at` a `(action, created_at)`).
 **Pravidlo časů (ADR-0007):** sloupec, který plní databáze (`DEFAULT CURRENT_TIMESTAMP`), je v UTC — `audit_log.created_at`,

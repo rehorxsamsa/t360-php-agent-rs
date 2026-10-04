@@ -10,7 +10,7 @@
 <!--
   Tutoriál spravuje agent `technicky-spisovatel` podle skillu `tutorial-kapitola`.
   Měnit smí jen místa označená komentářem „AGENT:“ a kapitoly zadané vedoucím týmu.
-  Kapitola 16 „Nasazení na VPS Debian“ je obsahově zamčená (napsal ji lektor).
+  Kapitola „Nasazení na VPS Debian“ je obsahově zamčená (napsal ji lektor).
 -->
 <style>
 :root{
@@ -104,6 +104,7 @@ ol.kroky{padding-left:1.4rem} ol.kroky > li{margin:.4rem 0}
     <li><a href="#m4">Veřejná část: výpis, detail a Markdown</a></li>
     <li><a href="#m5">Správa článků v administraci</a></li>
     <li><a href="#m6">AI jádro: klient, náklady, příklady 01–05</a></li>
+    <li><a href="#m8">Audit a dokončení: audit log, časy, opravy</a></li>
     <li><a href="#architektura">Architektura aplikace</a></li>
     <li><a href="#bezpecnost">Bezpečnost v kódu</a></li>
     <li><a href="#ai-01">AI 01 · Perex na jedno kliknutí</a></li>
@@ -596,7 +597,7 @@ HTTP/1.1 403 Forbidden
 
 # se správným tokenem, ale špatným heslem
 curl -s http://localhost:8080/admin/prihlaseni -X POST -H 'Cookie: redakce_session=3253bfdd…' -d '_csrf=4d9e918e…&amp;email=admin%40example.cz&amp;password=spatne-heslo' -D - -o /dev/null
-HTTP/1.1 422
+HTTP/1.1 422 Unprocessable Content
 
 # se správným heslem
 curl -s http://localhost:8080/admin/prihlaseni -X POST -H 'Cookie: redakce_session=3253bfdd…' -d '_csrf=4d9e918e…&amp;email=admin%40example.cz&amp;password=dlouhe-heslo-12' -D - -o /dev/null
@@ -634,7 +635,8 @@ SELECT id, action, user_id, summary, ip_address FROM audit_log ORDER BY id;
       cookie se proto jmenuje <code>redakce_session</code> a <code>Secure</code> se zapíná až proměnnou
       <code>SESSION_COOKIE_SECURE=1</code> v produkci.</li>
     </ul>
-    Vše je v backlogu: omezení pokusů, timeouty a CSP s nonce v milníku M8, <code>Secure</code> cookie v M9.
+    Vše je vědomě odložené, viz oddíl „Vědomě vynecháno ve výukovém režimu“ v kapitole
+    <a href="#bezpecnost">Bezpečnost v kódu</a>. <code>Secure</code> cookie přijde s nasazením (M9).
     Do skutečného provozu s tím nenasazuj.</aside>
 
   <h3>Bezpečnost</h3>
@@ -1492,16 +1494,463 @@ ANTHROPIC_API_KEY=tvůj-klíč</code></pre>
   <!-- AGENT: kapitola M6 -->
 </section>
 
+<section class="kapitola" id="m8">
+  <h2>Audit a dokončení: stránka audit logu, časy a drobné opravy</h2>
+  <p class="cil">Admin otevře <code>/admin/audit</code> a uvidí, kdo se kdy přihlásil, odhlásil nebo měnil články.
+  Výpis jde zúžit podle akce a data a stránkuje se po 50 záznamech. Zároveň si ukážeme, proč je čas v databázi jiný než
+  na stránce, a opravíme tři drobnosti, které zbyly z dřívějších kapitol.</p>
+
+  <p><strong>Pozor na dvě věci se jménem „audit“.</strong> Stránka <code>/admin/audit</code> je výpis tabulky
+  <code>audit_log</code> uvnitř aplikace. Příkaz <code>/audit</code> v Claude Code je něco jiného: spustí revizi celého
+  repozitáře týmem agentů. Tady jde jen o stránku v aplikaci.</p>
+
+  <h3>Jak to funguje</h3>
+  <pre class="mermaid">
+flowchart LR
+  F[Formulář filtru&lt;br&gt;GET /admin/audit?akce=…&amp;od=…&amp;do=…] --> C[AuditLogController]
+  C --> V{AuditLogSearch::filter}
+  V -- chyba --> E[422 + formulář s chybami]
+  V -- ok --> P[AuditLogSearch::page]
+  P --> R[PdoAuditLogRepository&lt;br&gt;count + search]
+  R --> D[(audit_log v UTC)]
+  R --> T[čas převeden na Praha]
+  T --> S[šablona admin/audit/index.php]
+  </pre>
+  <p>Vrstvy jsou stejné jako u správy článků: controller (<code>src/Http/Controller/Admin/AuditLogController.php</code>)
+  je tenký, validaci a stránkování dělá <code>src/Application/Audit/AuditLogSearch.php</code> a SQL je jen v
+  <code>src/Infrastructure/Persistence/PdoAuditLogRepository.php</code>.</p>
+
+  <h3>Krok 1 – Filtr je GET formulář bez CSRF tokenu</h3>
+  <p>Filtr nic nemění, jen čte. Proto je to <code>&lt;form method="get" action="/admin/audit"&gt;</code> a nemá pole
+  <code>_csrf</code>. CSRF útok totiž nutí uživatele něco <em>změnit</em>; u čtení není co zneužít. Navíc má GET výhodu:
+  adresa s filtrem se dá uložit do záložek a poslat kolegovi. Pravidlo z kapitoly M3 platí dál: token potřebuje každý
+  <code>POST</code>, ale <code>GET</code> nesmí nic měnit. Trasa je proto jen jedna, <code>GET</code>
+  (<code>POST /admin/audit</code> vrátí 405).</p>
+  <p>Formulář má tři pole: <code>akce</code> (výběr ze sedmi akcí z <code>AuditAction</code>, popisky česky), <code>od</code>
+  a <code>do</code> (<code>&lt;input type="date"&gt;</code>), tlačítko „Filtrovat“ a odkaz „Zrušit filtr“.</p>
+
+  <h3>Krok 2 – Neplatný filtr vrátí 422</h3>
+  <p>Prohlížeč pošle datum vždy ve tvaru <code>RRRR-MM-DD</code>, ale adresu může kdokoli napsat ručně. Server proto
+  filtr ověřuje sám (<code>AuditLogSearch::filter</code>): akce musí být v <code>AuditAction</code>, datum musí mít přesný tvar
+  a existovat v kalendáři (<code>checkdate</code>, takže <code>2026-02-30</code> neprojde) a <code>od</code> nesmí být
+  pozdější než <code>do</code>. Při chybě se vykreslí formulář se stavem <strong>422</strong>, hlášky jsou v
+  <code>role="alert"</code> a vadné pole má <code>aria-invalid="true"</code>. Do databáze se pak nesahá vůbec. Stejně se chovají
+  formuláře ve správě článků. Tiché ignorování filtru by admina nechalo zmatené, proč vidí všechno.</p>
+
+  <h3>Krok 3 – Stránkování zachová filtr</h3>
+  <p>Na stránce je 50 záznamů, nejnovější nahoře. Odkazy „Předchozí strana“ a „Další strana“ musí do adresy přenést i
+  filtr, jinak by se při klepnutí filtr ztratil. Skládá je metoda <code>pageUrl</code> v controlleru:</p>
+  <pre><code>foreach (self::QUERY_KEYS as $key) {          // ['akce', 'od', 'do']
+    if (($query[$key] ?? '') !== '') {
+        $parameters[$key] = $query[$key];       // prázdné parametry se vynechají
+    }
+}
+if ($page &gt; 1) {
+    $parameters['strana'] = (string) $page;     // strana 1 je bez parametru
+}
+return $parameters === [] ? self::LIST_PATH
+    : self::LIST_PATH . '?' . http_build_query($parameters, '', '&amp;', PHP_QUERY_RFC3986);</code></pre>
+  <p>Pořadí parametrů je pevné (<code>akce</code>, <code>od</code>, <code>do</code>, <code>strana</code>), takže jsou odkazy
+  stabilní. <code>http_build_query</code> hodnoty správně zakóduje a šablona je navíc vypíše přes <code>e_attr()</code>.
+  Číslo strany ověřuje stejná třída <code>PageNumber</code> jako veřejný výpis: <code>?strana=999</code> nebo
+  <code>?strana=abc</code> je 404.</p>
+
+  <h3>Krok 4 – Jeden dotaz na stránku, žádné N+1</h3>
+  <p>Jméno uživatele se k záznamu přidá jedním <code>LEFT JOIN</code>, ne dotazem pro každý řádek (viz „N+1 dotaz“ ve
+  slovníčku). <code>LEFT</code> proto, že neúspěšné přihlášení k neznámému e-mailu nemá <code>user_id</code> a řádek se
+  nesmí ztratit. Filtr se skládá jen z pevných kousků SQL, hodnoty jsou vždy vázané parametry:</p>
+  <pre><code>if ($filter-&gt;action !== null) {
+    $conditions[] = 'a.action = :action';
+    $parameters['action'] = $filter-&gt;action-&gt;value;
+}
+if ($filter-&gt;from !== null) {
+    $conditions[] = 'a.created_at &gt;= :from';
+    $parameters['from'] = $this-&gt;toDatabase($filter-&gt;from);
+}
+if ($filter-&gt;until !== null) {
+    $conditions[] = 'a.created_at &lt; :until';
+    $parameters['until'] = $this-&gt;toDatabase($filter-&gt;until);
+}</code></pre>
+  <p>Volba <code>do</code> zahrnuje celý den. Aplikace proto zadané datum posune o den a repozitář hledá
+  <code>created_at &lt; následující den 00:00</code>. Posun dělá PHP v pražské zóně, takže správně vyjde i 25. října 2026,
+  kdy má den 25 hodin. Filtr podle akce a data urychlují indexy <code>idx_audit_log_action_created_at</code> a
+  <code>idx_audit_log_created_at</code>, které už existují v migraci tabulky.</p>
+
+  <h3>Krok 5 – Časy: v databázi UTC, na stránce Praha</h3>
+  <p>Rozhodnutí je zapsané v <code>docs/adr/0007-casy-v-databazi-utc-vs-praha.md</code> a má jedno pravidlo:
+  <strong>co plní databáze (<code>DEFAULT CURRENT_TIMESTAMP</code>), je v UTC; co plní aplikace z <code>Clock</code>, je v
+  Europe/Prague.</strong> Záznam do <code>audit_log</code> píše databáze, takže je v UTC. Na stránce ale admin čeká pražský
+  čas. Převod dělá jen <code>PdoAuditLogRepository</code>: hranice filtru převádí z Prahy do UTC
+  (<code>toDatabase</code>) a načtený čas zpět do Prahy (<code>fromDatabase</code>). Doména a šablony pak vidí jen pražský čas.</p>
+  <p>Aby výchozí hodnota databáze byla v UTC vždycky, ne jen náhodou podle nastavení serveru, nastavuje
+  <code>ConnectionFactory</code> po připojení zónu spojení:</p>
+  <pre><code>$pdo-&gt;exec("SET time_zone = '+00:00'");</code></pre>
+  <p>Příkaz používá pevný text bez vstupu, proto stačí <code>exec()</code> a nepotřebuje prepared statement. Sloupec
+  <code>DATETIME</code> zónu neukládá, jen číslo. Bez pravidla by nikdo nepoznal, jestli <code>07:25</code> je pražský čas
+  nebo UTC. Proč nezvolit jedno pásmo všude, vysvětluje ADR (přepis dat a starších kapitol by byl velký zásah).</p>
+
+  <h3>Krok 6 – Tři opravy z dřívějška</h3>
+  <ul>
+    <li><strong>Stavový řádek 422.</strong> PHP-FPM neposlalo u kódu 422 text, nginx pak vrátil <code>HTTP/1.1 422 </code> bez
+    slova. <code>Response::send()</code> teď pro známé kódy pošle hlavičku <code>HTTP/1.1 422 Unprocessable Content</code>
+    (tabulka <code>REASON_PHRASES</code> v <code>src/Http/Response.php</code>). Klientům je text lhostejný, ale v
+    ukázkách a logu vypadá správně.</li>
+    <li><strong>Vnořená pole formuláře.</strong> Pole <code>model[][]=x</code> se dřív zahodilo celé a tvářilo se jako
+    „neodesláno“, takže formulář použil výchozí model a spustil volání. Teď <code>Request</code> uloží takové pole jako
+    prázdný seznam: bylo odesláno, ale nemá platnou hodnotu, a formulář ho odmítne (422 „Vyberte model ze seznamu.“).</li>
+    <li><strong>Ikona webu.</strong> Prohlížeč se ptal na <code>/favicon.ico</code> a dostával 404. Šablona
+    <code>templates/layout.php</code> má teď <code>&lt;link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"&gt;</code>
+    a <code>public/assets/favicon.svg</code> je prostý SVG bez skriptů.</li>
+  </ul>
+  <p>K tomu seed (<code>make seed</code>) nově vyplňuje u ukázkových článků <code>created_at</code> a
+  <code>updated_at</code> pražským časem a dorovná starší seedované články, které nikdo v administraci neupravil.
+  Druhé spuštění už nic nemění.</p>
+
+  <h3>Spusť to</h3>
+  <p>Nepřihlášený návštěvník skončí na přihlášení a <code>POST</code> není povolený:</p>
+  <pre><code>curl -s -i http://localhost:8080/admin/audit
+HTTP/1.1 303 See Other
+Location: /admin/prihlaseni
+...
+curl -s -X POST http://localhost:8080/admin/audit -o /dev/null -w '%{http_code}'
+405</code></pre>
+  <p>Stavové řádky po opravě:</p>
+  <pre><code>curl -s -I http://localhost:8080/neexistuje
+HTTP/1.1 404 Not Found
+curl -s -i http://localhost:8080/admin/prihlaseni -X POST -H 'Cookie: redakce_session=…' -d '_csrf=…&amp;email=admin%40example.cz&amp;password=spatne-heslo-123'
+HTTP/1.1 422 Unprocessable Content
+curl -s -o /dev/null -w '%{http_code} %{content_type}' http://localhost:8080/assets/favicon.svg
+200 image/svg+xml</code></pre>
+  <p>Teď naplň ukázková data a otevři stránku v prohlížeči:</p>
+  <ol class="kroky">
+    <li><code>make seed</code>. Po aktualizaci na M8 vypíše počet dorovnaných časů, při dalším spuštění
+    „Ukázková data už jsou v databázi, nic nového se nevložilo.“</li>
+    <li>Přihlas se na <a href="http://localhost:8080/admin/prihlaseni">localhost:8080/admin/prihlaseni</a> administrátorem z README
+    (<code>admin@example.cz</code>, heslo z příkazu <code>admin:vytvor</code>).</li>
+    <li>V rozcestníku klepni na „Audit log“, nebo otevři <a href="http://localhost:8080/admin/audit">localhost:8080/admin/audit</a>.
+    Nahoře je tvoje přihlášení: „Přihlášení“, uživatel „Administrátor“, aktuální pražský čas.</li>
+    <li>Vyber „Neúspěšné přihlášení“ a klepni na „Filtrovat“. Adresa je
+    <code>/admin/audit?akce=auth.login_failed</code> a v tabulce zůstanou jen tyto záznamy.</li>
+  </ol>
+  <p>Stejný výpis z konzoly pro přihlášeného admina (zkráceno, data z mého běhu):</p>
+  <pre><code>curl -s -i http://localhost:8080/admin/audit -H 'Cookie: redakce_session=…'
+HTTP/1.1 200 OK
+...
+Počet záznamů: 83        Strana 1 z 2
+&lt;time datetime="2026-10-04T07:25:48+02:00"&gt;4. října 2026 07:25:48&lt;/time&gt;   Přihlášení   Administrátor
+
+curl -s -i http://localhost:8080/admin/audit?od=2026-13-01 -H 'Cookie: …'
+HTTP/1.1 422 Unprocessable Content
+&lt;li id="od-error"&gt;Zadejte datum od ve tvaru RRRR-MM-DD.&lt;/li&gt;
+
+curl -s -i http://localhost:8080/admin/audit?strana=999 -H 'Cookie: …'
+HTTP/1.1 404 Not Found
+
+curl -s -i http://localhost:8080/admin/audit?akce=xyz -H 'Cookie: …'
+HTTP/1.1 422 Unprocessable Content
+&lt;li id="akce-error"&gt;Vyberte akci ze seznamu.&lt;/li&gt;</code></pre>
+  <p>Počet záznamů se u tebe bude lišit. Při víc než 50 záznamech ukáže stránka odkaz „Další strana“ na
+  <code>/admin/audit?strana=2</code>, s filtrem třeba na <code>/admin/audit?akce=auth.login&amp;strana=2</code>.</p>
+  <p>Čas v databázi ověříš v Admineru (<a href="http://localhost:8081">localhost:8081</a>, server <code>db</code>):</p>
+  <pre><code>SELECT id, created_at, action FROM audit_log ORDER BY id DESC LIMIT 1;
+83  2026-10-04 05:25:48.570677  auth.login      -- v UTC
+-- na stránce: 4. října 2026 07:25:48            -- v Praze (v létě o 2 hodiny víc)</code></pre>
+
+  <h3>Bezpečnost</h3>
+  <ul>
+    <li><strong>Přístup:</strong> trasa je za <code>AdminAccessMiddleware</code> a controller ještě jednou kontroluje přihlášeného
+    uživatele (obrana do hloubky). Audit obsahuje IP adresy a zkoušené e-maily, proto ho vidí jen admin.</li>
+    <li><strong>XSS:</strong> shrnutí neúspěšného přihlášení obsahuje e-mail, který napsal útočník, například
+    <code>&lt;script&gt;…</code>. Šablona vypisuje vše přes <code>e()</code> a hodnoty filtru zpět do formuláře přes
+    <code>e_attr()</code>.</li>
+    <li><strong>SQL injection:</strong> do textu dotazu se nikdy nevkládá hodnota ze vstupu, jen pevné fragmenty. Hodnoty jsou
+    vázané parametry.</li>
+    <li><strong>Únik informací:</strong> chyba filtru vrátí českou hlášku, ne <code>SQLSTATE</code> ani výpis zásobníku.</li>
+    <li><strong>Vědomě vynecháno:</strong> filtr podle uživatele, export, mazání starých záznamů. Plán je vede jako backlog.</li>
+  </ul>
+
+  <h3>Jak to postavili agenti</h3>
+  <p>Plán <code>docs/plan/007-audit-a-dokonceni.md</code> a ADR-0007 napsal <code>architekt</code>, člověk je schválil na bráně 1.
+  <code>tester</code> psal testy napřed (dvojník <code>InMemoryAuditLogRepository</code> počítá volání, takže test ověří, že
+  se při neplatném filtru repozitář vůbec nevolá), <code>programator</code> nejdřív opravil drobnosti a pak postavil stránku.
+  <code>databazista</code> se nespouštěl: schéma se nemění a indexy už existují. Bezpečnostní revize v tomto milníku nebyla
+  (výukový režim). Tuto kapitolu napsal <code>technicky-spisovatel</code> a příkazy v ní spustil.</p>
+
+  <h3>Vyzkoušej sám</h3>
+  <ol class="kroky">
+    <li>Zadej do adresy <code>?od=2026-02-30</code>. Jaký kód a hlášku dostaneš a proč se formulář nedostane k databázi?</li>
+    <li>Přihlas se špatným heslem a otevři audit. Jaké „Uživatel“ a „Shrnutí“ má nový záznam? Zkus to i s neexistujícím e-mailem.</li>
+    <li>V Admineru porovnej <code>created_at</code> posledního záznamu s časem na stránce. Kolik hodin je rozdíl a proč?</li>
+  </ol>
+
+  <details class="kviz"><summary>Kvíz (3 otázky)</summary>
+    <p>1. Proč formulář filtru nemá CSRF token?</p>
+    <details><summary>Odpověď</summary><p>Je to <code>GET</code> a nic nemění. CSRF nutí uživatele ke změně stavu, u čtení není co zneužít. Token potřebují jen formuláře s <code>POST</code>.</p></details>
+    <p>2. Proč <code>do=2026-10-03</code> zahrnuje i záznam z 23:59:59 toho dne?</p>
+    <details><summary>Odpověď</summary><p>Aplikace datum posune o den a hledá <code>created_at &lt; 2026-10-04 00:00:00</code> (v pražském čase, převedeno do UTC). Celý zadaný den tedy spadá dovnitř.</p></details>
+    <p>3. Kdo a kde převádí čas z UTC na pražský a proč je to jen na jednom místě?</p>
+    <details><summary>Odpověď</summary><p><code>PdoAuditLogRepository</code> při čtení. Doména, šablony i testy pak pracují jen s pražským časem a nemusí nic hlídat. Pravidlo je v ADR-0007.</p></details>
+  </details>
+
+  <dl class="slovnicek">
+    <dt>Audit log (výpis)</dt><dd>Stránka <code>/admin/audit</code> s tabulkou <code>audit_log</code>, filtrem podle akce a data a stránkováním po 50. Jen pro čtení.</dd>
+    <dt>GET formulář</dt><dd>Formulář s <code>method="get"</code>: hodnoty jdou do adresy. Hodí se pro hledání a filtry, protože nic nemění a adresu jde sdílet.</dd>
+    <dt>LEFT JOIN</dt><dd>Spojení tabulek, které zachová i řádky bez protějšku (záznam bez uživatele se ve výpisu neztratí).</dd>
+  </dl>
+  <!-- AGENT: kapitola M8 -->
+</section>
+
 <section class="kapitola" id="architektura">
   <h2>Architektura aplikace</h2>
-  <div class="zastupny">Doplní agent podle <code>docs/architektura.md</code> po milníku M2.</div>
+  <p class="cil">Tady si složíš celou aplikaci do jednoho obrázku: které vrstvy existují, kudy putuje jeden požadavek,
+  kdo komu smí volat a proč jsou middleware v právě tomto pořadí. Podrobnější a vždy aktuální verze je v
+  <code>docs/architektura.md</code>.</p>
+
+  <h3>Vrstvy aplikace</h3>
+  <pre class="mermaid">
+flowchart LR
+  subgraph Root[Kompoziční kořen]
+    FC[public/index.php]
+    BK[bin/konzole]
+    CFG[config/container.php<br/>config/routes.php]
+  end
+  subgraph Http[App Http]
+    MW[Kernel + middleware]
+    C[Controller + šablony]
+  end
+  subgraph App[App Application]
+    UC[Use-case třídy]
+  end
+  subgraph Dom[App Domain]
+    D[Entity, hodnoty,<br/>rozhraní repozitářů]
+  end
+  subgraph Inf[App Infrastructure]
+    R[Pdo repozitáře, session,<br/>hodiny, migrace]
+  end
+  subgraph Ai[App Ai]
+    L[LlmClient + příklady]
+  end
+  FC --> CFG
+  BK --> CFG
+  CFG --> MW
+  MW --> C
+  C --> UC
+  UC --> D
+  R -. implementuje .-> D
+  C --> L
+  L --> D
+  </pre>
+  <p>Platí jedno pravidlo: <strong>závislosti míří dovnitř, k <code>Domain</code></strong>. Doména nezná HTTP ani SQL,
+  jen definuje rozhraní (<code>ArticleRepository</code>, <code>Clock</code>, <code>AuditLogRepository</code>).
+  Implementace leží v <code>Infrastructure</code> a kontejner je dosadí. Kontrola je jednoduchá: v
+  <code>src/Domain</code> ani <code>src/Application</code> nenajdeš <code>use App\Http</code> ani
+  <code>use App\Infrastructure</code>. Modul <code>App\Ai</code> je jediná vrstva navíc (viz kapitola M6). Má jednu
+  drobnou výjimku: <code>AiConfig</code> čte <code>MissingConfiguration</code> z <code>Infrastructure\Config</code>.</p>
+
+  <div class="tabulka"><table>
+    <thead><tr><th>Vrstva</th><th>Co v ní je</th><th>Co o ní musíš vědět</th></tr></thead>
+    <tbody>
+      <tr><td><code>Http</code></td><td><code>Kernel</code>, <code>Request</code>, <code>Response</code>, <code>Router</code>, middleware, controllery, <code>TemplateRenderer</code></td><td>Řeší jen HTTP. Controller je tenký a nemá SQL.</td></tr>
+      <tr><td><code>Application</code></td><td><code>CreateArticle</code>, <code>PublishedArticles</code>, <code>AdminAuthenticator</code>, validátory</td><td>Pravidla a pořadí kroků. Neví nic o HTTP ani SQL.</td></tr>
+      <tr><td><code>Domain</code></td><td>Entity, <code>Slug</code>, <code>AuditAction</code>, rozhraní repozitářů, <code>Clock</code></td><td>Čisté PHP bez závislostí na ostatních vrstvách.</td></tr>
+      <tr><td><code>Infrastructure</code></td><td><code>Pdo*Repository</code>, <code>ConnectionFactory</code>, <code>NativeSession</code>, <code>SystemClock</code>, <code>Migrator</code></td><td>Jediné místo se SQL a s <code>$_SESSION</code>.</td></tr>
+      <tr><td><code>Console</code></td><td><code>ConsoleApplication</code> a příkazy (<code>migrace:spust</code>, <code>admin:vytvor</code>, <code>db:seed</code>, <code>ai:priklad</code>)</td><td>Druhý vstupní bod vedle webu, stejný kontejner.</td></tr>
+      <tr><td><code>Container</code></td><td><code>Container</code></td><td>Technické jádro bez znalosti domény.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Tok jednoho požadavku</h3>
+  <pre class="mermaid">
+sequenceDiagram
+  participant N as nginx
+  participant F as public/index.php
+  participant DI as Container
+  participant K as Kernel
+  participant M as Middleware řetěz
+  participant C as Controller
+  participant U as Use-case
+  participant R as Repozitář
+  participant T as Šablona
+  N->>F: FastCGI (jen index.php)
+  F->>DI: require config/container.php
+  F->>K: get(Kernel)->handle(Request::fromGlobals())
+  K->>M: pipeline.handle(request)
+  M->>M: SecurityHeaders, ErrorHandler, Routing, Csrf, AdminAccess
+  M->>K: dispatch(request s trasou)
+  K->>DI: get(ControllerClass)
+  K->>C: metoda(request)
+  C->>U: use-case
+  U->>R: dotaz (PDO, prepared statement)
+  R-->>U: read model
+  C->>T: render(šablona, data)
+  T-->>C: HTML (vše přes e())
+  C-->>M: Response
+  M-->>F: Response + bezpečnostní hlavičky
+  F-->>N: send()
+  </pre>
+  <ol class="kroky">
+    <li>nginx pošle PHP-FPM jen <code>public/index.php</code>. Jakýkoli jiný <code>.php</code> soubor vrátí 404.</li>
+    <li><code>index.php</code> načte kompoziční kořen <code>config/container.php</code> a z kontejneru vyzvedne <code>Kernel</code>.</li>
+    <li><code>Request::fromGlobals()</code> je jediné místo, které čte <code>$_SERVER</code>, <code>$_GET</code> a <code>$_POST</code>.</li>
+    <li><code>Kernel</code> pustí požadavek middleware řetězem. Na jeho konci vyzvedne z kontejneru controller, který trasa určila.</li>
+    <li>Controller zavolá use-case, ten repozitář. Šablona vypíše data. <code>Response::send()</code> odešle stavový kód, hlavičky a tělo.</li>
+  </ol>
+
+  <h3>Middleware řetěz</h3>
+  <p>Pořadí je v <code>config/container.php</code> a je důležité. Požadavek jde shora dolů, odpověď zpět:</p>
+  <ol class="kroky">
+    <li><code>SecurityHeadersMiddleware</code> – nejvnější. Přidá hlavičky ke každé odpovědi, i k chybové.</li>
+    <li><code>ErrorHandlerMiddleware</code> – změní výjimky na stránky 404, 405 a 500. Detail chyby jde jen do <code>error_log</code>.</li>
+    <li><code>RoutingMiddleware</code> – přiřadí požadavku trasu. Neexistující cesta a špatná metoda skončí tady.</li>
+    <li><code>CsrfMiddleware</code> – každé <code>POST</code> bez platného tokenu skončí kódem 403.</li>
+    <li><code>AdminAccessMiddleware</code> – cesty pod <code>/admin</code> pustí jen přihlášenému (kromě přihlašovací stránky).</li>
+  </ol>
+  <aside class="korektura"><strong>Dvě odchylky od učebnicového pořadí.</strong>
+    Obecná zásada zní „hlavičky, session, CSRF, autentizace, autorizace“. U nás je <strong>routing před CSRF</strong>:
+    kdyby CSRF běželo první, vrátil by <code>POST</code> na neexistující adresu 403 místo 404 a <code>POST /zdravi</code>
+    také 403 místo 405. A <strong>session není vrstva</strong>, ale líná služba (<code>Session</code>, implementace
+    <code>NativeSession</code>): startuje až při prvním čtení či zápisu, takže veřejná stránka nedostane cookie.
+    Autentizace a autorizace jsou jeden middleware, protože existuje jediná role <code>admin</code>.</aside>
+
+  <h3>DI kontejner s autowiringem</h3>
+  <p><code>App\Container\Container</code> má asi 140 řádků a umí tři věci. <code>set()</code> zaregistruje továrnu
+  (potřebuješ ji pro rozhraní a skalární parametry). <code>get()</code> vrátí sdílenou instanci. Když továrna chybí,
+  <strong>autowiring</strong> přečte přes reflexi konstruktor a pro každý parametr s typem třídy zavolá <code>get()</code>
+  rekurzivně. Zacyklenou závislost pozná a vyhodí <code>ContainerException</code>.</p>
+  <pre><code>// config/container.php: rozhraní se musí svázat ručně
+$container->set(
+    AuditLogRepository::class,
+    static fn(Container $c): AuditLogRepository => new PdoAuditLogRepository($c->get(\PDO::class)),
+);</code></pre>
+  <p>Controller ani use-case se neregistrují: stačí, že mají konstruktor s typovanými parametry. Spojení s databází je
+  líné, vzniká až při prvním dotazu. Migrační účet (právo na DDL) se sestavuje jen v konzoli, web ho nikdy nečte.
+  Kontejner smí volat jen kompoziční kořen a <code>Kernel</code>. Controllery dostávají závislosti konstruktorem a
+  kontejner neznají (žádný service locator).</p>
+
+  <h3>Modul AI</h3>
+  <p><code>App\Ai</code> stojí vedle webu. Příklady (<code>Example01Excerpt</code> a další) volají rozhraní
+  <code>LlmClient</code>. Kontejner pod něj vždy dosadí dekorátor <code>MeteredLlmClient</code> (denní limit, cena, zápis
+  do <code>ai_calls</code>) nad <code>FakeLlmClient</code> (výchozí, bez sítě) nebo <code>AnthropicClient</code> (cURL).
+  Ven jde provoz jen s <code>AI_PROVIDER=anthropic</code>. Podrobnosti jsou v kapitole <a href="#m6">AI jádro (M6)</a>.</p>
+
+  <h3>Rozhodnutí, na kterých to stojí</h3>
+  <p>Každé zásadní rozhodnutí má v <code>docs/adr/</code> krátký záznam (ADR, <em>Architecture Decision Record</em>):</p>
+  <ul>
+    <li><strong>ADR-0001</strong> – aplikaci vyvíjí výhradně tým agentů, člověk schvaluje na dvou branách.</li>
+    <li><strong>ADR-0002</strong> – vše běží v Dockeru včetně MCP serverů, na hostiteli není PHP ani Node.</li>
+    <li><strong>ADR-0003</strong> – identifikátory v kódu anglicky, česky jen to, co vidí uživatel.</li>
+    <li><strong>ADR-0004</strong> – tabulky a sloupce databáze anglicky.</li>
+    <li><strong>ADR-0005</strong> – vlastní minimální Markdown renderer místo knihovny (bez nové závislosti).</li>
+    <li><strong>ADR-0006</strong> – vlastní klient Claude API přes cURL a strukturovaný výstup přes <code>output_config.format</code>.</li>
+    <li><strong>ADR-0007</strong> – časy v databázi: co plní databáze, je v UTC; co plní aplikace, je v Europe/Prague.</li>
+  </ul>
+
+  <h3>Vyzkoušej sám</h3>
+  <ol class="kroky">
+    <li>Otevři <code>config/container.php</code> a najdi pořadí middleware. Co se změní, když prohodíš <code>RoutingMiddleware</code> a <code>CsrfMiddleware</code>? Ověř <code>curl -X POST</code> na <code>/neexistuje</code>.</li>
+    <li>Spusť <code>grep -rn "App.Http" src/Domain src/Application</code> (uvnitř kontejneru, <code>docker compose exec app …</code>). Co vypíše?</li>
+    <li>Přidej nový controller s konstruktorem, který chce <code>Clock</code>. Musíš ho někam registrovat?</li>
+  </ol>
+
+  <details class="kviz"><summary>Kvíz (3 otázky)</summary>
+    <p>1. Která vrstva smí obsahovat SQL?</p>
+    <details><summary>Odpověď</summary><p>Jen <code>Infrastructure</code> (třídy <code>Pdo*Repository</code>) a seed.</p></details>
+    <p>2. Proč není session middleware?</p>
+    <details><summary>Odpověď</summary><p>Je to líná služba. Veřejné stránky tak nedostanou cookie a session startuje, až když ji někdo čte nebo zapisuje.</p></details>
+    <p>3. Co kontejner udělá s rozhraním, které nemá zaregistrovanou továrnu?</p>
+    <details><summary>Odpověď</summary><p>Vyhodí <code>ContainerException</code>: autowiring umí jen existující instanciovatelné třídy, rozhraní se vždy váže přes <code>set()</code>.</p></details>
+  </details>
+
+  <dl class="slovnicek">
+    <dt>Autowiring</dt><dd>Kontejner si závislosti zjistí z typů v konstruktoru, takže je nemusíš popisovat ručně.</dd>
+    <dt>Kompoziční kořen</dt><dd>Jediné místo, kde se objekty skládají dohromady (<code>config/container.php</code>).</dd>
+    <dt>Vrstvy aplikace</dt><dd>Rozdělení kódu na Http, Application, Domain a Infrastructure. Závislosti míří k Domain.</dd>
+  </dl>
   <!-- AGENT: kapitola architektura -->
 </section>
 
 <section class="kapitola" id="bezpecnost">
   <h2>Bezpečnost v kódu</h2>
-  <div class="zastupny">Doplní agent po milníku M3: přihlášení, role admin, CSRF, CSP s nonce,
-  session, brute force, audit log — vždy se skutečným kódem z repozitáře.</div>
+  <p class="cil">Souhrn všech ochran, které v aplikaci opravdu jsou: kde je najdeš v kódu a před čím chrání. Na konci je
+  upřímný seznam toho, co ve výukovém režimu záměrně chybí. Každé tvrzení má soubor, který si můžeš otevřít.</p>
+
+  <h3>Opatření, kód a čemu brání</h3>
+  <div class="tabulka"><table>
+    <thead><tr><th>Opatření</th><th>Kde v kódu</th><th>Čemu brání</th></tr></thead>
+    <tbody>
+      <tr><td>Escapování výstupu</td><td><code>e()</code> a <code>e_attr()</code> v <code>src/Http/View/helpers.php</code>, volané ve všech šablonách</td><td>XSS. Bez <code>e()</code> se vypisují jen <code>$content</code> v layoutu a HTML z <code>MarkdownRenderer</code>.</td></tr>
+      <tr><td>CSRF token</td><td><code>CsrfMiddleware</code>, <code>CsrfToken</code> (<code>random_bytes</code>, <code>hash_equals</code>), <code>csrf_field()</code></td><td>Podvržený formulář z cizího webu. Každý <code>POST</code> bez platného <code>_csrf</code> skončí kódem 403.</td></tr>
+      <tr><td>Hesla</td><td><code>PasswordHasher</code>: <code>PASSWORD_ARGON2ID</code>, <code>needsRehash</code></td><td>Únik databáze. Z otisku se heslo nedá zpět spočítat a výpočet je záměrně drahý.</td></tr>
+      <tr><td>Vyrovnání času</td><td><code>PasswordHasher::verifyDummy</code> v <code>AdminAuthenticator</code></td><td>Výčet účtů. Neexistující e-mail se ověřuje stejně dlouho a vrací stejnou hlášku i kód 422.</td></tr>
+      <tr><td>Session cookie</td><td><code>NativeSession::start</code>: <code>HttpOnly</code>, <code>SameSite=Strict</code>, <code>use_strict_mode</code>, <code>use_only_cookies</code></td><td>Krádež cookie skriptem, odeslání cookie z cizího webu, podvržení cizího čísla session.</td></tr>
+      <tr><td>Nové číslo session</td><td><code>AuthSession::signIn</code> (<code>regenerateId</code>, <code>CsrfToken::rotate</code>) a <code>signOut</code></td><td>Session fixation: číslo z doby před přihlášením po něm přestane platit.</td></tr>
+      <tr><td>Bezpečnostní hlavičky</td><td><code>SecurityHeadersMiddleware</code>: <code>X-Content-Type-Options</code>, <code>X-Frame-Options: DENY</code>, <code>Referrer-Policy</code>, <code>Permissions-Policy</code>, <code>Cross-Origin-Opener-Policy</code>, statická <code>Content-Security-Policy</code></td><td>Vložení stránky do cizího rámu, hádání typu obsahu, načtení cizích skriptů. CSP je statická, protože aplikace nemá žádný inline skript ani styl.</td></tr>
+      <tr><td>SQL jen v repozitářích</td><td><code>Pdo*Repository</code>, <code>PDO::ATTR_EMULATE_PREPARES =&gt; false</code> v <code>ConnectionFactory</code></td><td>SQL injection. Hodnoty se vážou parametrem, text dotazu je pevný.</td></tr>
+      <tr><td>Přesměrování jen dovnitř</td><td><code>Response::redirect</code> (povolí jen cestu s jedním <code>/</code>)</td><td>Open redirect.</td></tr>
+      <tr><td>404 pro vše neveřejné</td><td><code>ErrorHandlerMiddleware</code>, <code>PageNotFound</code>, <code>AdminAccessMiddleware</code>; nginx vrací 404 pro skryté soubory a cizí <code>.php</code></td><td>Únik existence souborů a stránek. Koncept nebo budoucí článek se veřejně tváří jako neexistující.</td></tr>
+      <tr><td>Bezpečný Markdown</td><td><code>MarkdownRenderer</code> (ADR-0005): nejdřív <code>e()</code>, pak značky z allowlistu, URL jen <code>http(s)</code>, <code>mailto</code>, interní cesta a kotva</td><td>XSS přes text článku, včetně textu od LLM. <code>javascript:</code> odkaz zůstane prostým textem.</td></tr>
+      <tr><td>Audit log</td><td><code>AuditLogRepository</code>, <code>AuditAction</code>; zápis z <code>AdminAuthenticator</code> a use-case tříd</td><td>Nedohledatelné změny. Zapisuje přihlášení (i neúspěšná), odhlášení, vytvoření účtu a změny článků. E-mail z neúspěšného přihlášení je jen data.</td></tr>
+      <tr><td>Chyby bez detailu</td><td><code>ErrorHandlerMiddleware</code>, <code>display_errors = Off</code> v <code>docker/php/conf.d/app.ini</code></td><td>Únik cest, SQL a hesel ve stránce. Detail je jen v <code>error_log</code>.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Rizika LLM</h3>
+  <p>AI příklady mají vlastní tabulku rizik v kapitole <a href="#m6">AI jádro (M6)</a>. Souhrn podle OWASP LLM Top 10:</p>
+  <ul>
+    <li><strong>LLM01, prompt injection:</strong> text článku jde do promptu v značkách <code>&lt;clanek&gt;</code> (<code>PromptData</code>), vložené značky se zneškodní, příklady nemají žádné nástroje.</li>
+    <li><strong>LLM02, únik dat:</strong> do <code>ai_calls</code> se ukládají jen metadata (model, tokeny, cena). Při skutečném volání ale text článku odchází k Anthropicu. Klíč je jen v <code>.env</code>.</li>
+    <li><strong>LLM05, nedůvěryhodný výstup:</strong> JSON od modelu validuje PHP (<code>StructuredCall</code>, <code>FieldRules</code>), vypisuje se přes <code>e()</code> a nikam se neukládá.</li>
+    <li><strong>LLM06, přílišná pravomoc:</strong> model nic nemění. Navrhuje text a člověk ho sám zkopíruje.</li>
+    <li><strong>LLM10, neomezená spotřeba:</strong> <code>max_tokens</code> u každého příkladu, limit délky vstupu a denní limit tokenů v <code>MeteredLlmClient</code>.</li>
+  </ul>
+
+  <h3>Docker a vývoj s agenty</h3>
+  <ul>
+    <li>Všechny služby mají <code>cap_drop: ALL</code> a <code>no-new-privileges</code> (<code>x-hardening</code> v <code>compose.yaml</code>).</li>
+    <li>Porty webu, databáze a Adminera jsou vystavené jen na <code>127.0.0.1</code>.</li>
+    <li>Repozitář je v kontejneru <code>app</code> připojen jen ke čtení, zapisovatelné jsou jen adresáře, které vývoj potřebuje. <code>.env</code> je přemapovaný na <code>/dev/null</code>, takže kontejner tajemství nevidí. Hodnoty dostává přes <code>environment:</code>.</li>
+    <li>Webová část běží pod účtem <code>redakce_app</code> bez práva na DDL. MCP databáze používá účet <code>redakce_cteni</code> jen se <code>SELECT</code>.</li>
+    <li><strong>Hooky jsou pojistka, ne hranice.</strong> Zachytí běžnou chybu agenta (zakázaný příkaz, zapomenutý lint), ale odhodlanému agentovi nebo obejití přes jiný příkaz nezabrání. Skutečnou hranicí jsou práva v Dockeru a schvalovací brány člověka.</li>
+  </ul>
+
+  <h3>Vědomě vynecháno ve výukovém režimu</h3>
+  <p>Projekt běží ve výukovém režimu: MVP bez kol bezpečnostní revize. Tohle <strong>není hotové</strong> a do
+  skutečného provozu s tím nenasazuj:</p>
+  <div class="tabulka"><table>
+    <thead><tr><th>Co chybí</th><th>Co by hrozilo</th></tr></thead>
+    <tbody>
+      <tr><td>Omezení pokusů o přihlášení</td><td>Útočník může hádat hesla bez limitu. Pokusy se aspoň zapisují do audit logu.</td></tr>
+      <tr><td>Timeouty session</td><td>Session žije do zavření prohlížeče. Zapomenuté přihlášení na cizím počítači neskončí samo.</td></tr>
+      <tr><td><code>Secure</code> cookie a prefix <code>__Host-</code> (M9)</td><td>Bez HTTPS by šla cookie zachytit v síti. Dev běží přes HTTP, <code>Secure</code> se zapíná proměnnou <code>SESSION_COOKIE_SECURE=1</code> až v produkčním compose.</td></tr>
+      <tr><td>CSP s nonce</td><td>Není potřeba, dokud aplikace nemá inline skripty. Jakmile nějaký přibude, statická CSP ho zablokuje a bude nutné nonce zavést.</td></tr>
+      <tr><td>Rate limit AI endpointů</td><td>Přihlášený admin může spouštět příklady donekonečna. Kryje to jen denní limit tokenů.</td></tr>
+      <tr><td>Bezpečnostní revize (<code>security-reviewer</code>) od milníku M2</td><td>Nálezy, které by revize našla, jsme nehledali. Tento tutoriál není auditovaný.</td></tr>
+      <tr><td>Sandbox Claude Code</td><td>Agent běží s právy uživatele a chrání nás jen hooky, oprávnění a Docker.</td></tr>
+      <tr><td>Digesty Docker obrazů</td><td>Obrazy jsou připnuté verzí, ne otiskem. Stejný tag může někdo přepsat.</td></tr>
+      <tr><td>Dvoufázové ověření (2FA)</td><td>Uniklé nebo uhodnuté heslo stačí k plnému přístupu do administrace.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Vyzkoušej sám</h3>
+  <ol class="kroky">
+    <li>Vytvoř článek s odkazem <code>[klik](javascript:alert(1))</code> a podívej se do zdroje stránky. Co zbylo z odkazu?</li>
+    <li>Zkus <code>curl -sI http://localhost:8080/.env</code> a <code>curl -sI http://localhost:8080/index.php/x.php</code>. Jaké kódy dostaneš?</li>
+    <li>V <code>NativeSession</code> přepni <code>use_strict_mode</code> na <code>false</code> a rozmysli, jaký útok tím umožníš.</li>
+  </ol>
+
+  <details class="kviz"><summary>Kvíz (3 otázky)</summary>
+    <p>1. Kde všude se v šabloně smí vypsat hodnota bez <code>e()</code>?</p>
+    <details><summary>Odpověď</summary><p>Jen vykreslený obsah v <code>layout.php</code> a HTML z <code>MarkdownRenderer</code> (text článku a náhled). Obojí je už bezpečné.</p></details>
+    <p>2. Proč <code>PasswordHasher</code> ověřuje „falešný“ hash, když e-mail neexistuje?</p>
+    <details><summary>Odpověď</summary><p>Aby odpověď trvala stejně dlouho jako u existujícího účtu a útočník nepoznal, které e-maily v systému jsou.</p></details>
+    <p>3. Proč hooky nejsou bezpečnostní hranice?</p>
+    <details><summary>Odpověď</summary><p>Kontrolují jen to, co předem popsaly. Pravidlo, které musí platit vždy, patří do práv (Docker, oprávnění) a do rozhodnutí člověka na bráně.</p></details>
+  </details>
+
+  <dl class="slovnicek">
+    <dt>CSP</dt><dd>Content-Security-Policy: hlavička, která prohlížeči říká, odkud smí stránka načítat skripty, styly a obrázky.</dd>
+    <dt>XSS</dt><dd>Cross-site scripting: do stránky se dostane cizí skript, protože se text vypsal bez escapování.</dd>
+  </dl>
   <!-- AGENT: kapitola bezpečnost -->
 </section>
 
@@ -1771,44 +2220,54 @@ crontab -e
 <section class="kapitola" id="slovnicek">
   <h2>Slovníček</h2>
   <dl class="slovnicek">
-    <dt>Compose profil</dt><dd>Štítek služby v <code>compose.yaml</code> (<code>profiles: [mcp]</code>). Služba s profilem se nespustí s <code>make up</code>, jen když ji vyžádáš (<code>--profile mcp</code>).</dd>
-    <dt>Docker</dt><dd>Nástroj, který spouští aplikace v izolovaných kontejnerech z předpřipravených obrazů. Díky němu na počítači nepotřebuješ PHP ani databázi.</dd>
-    <dt>Healthcheck</dt><dd>Příkaz, kterým Docker opakovaně zjišťuje, zda služba opravdu funguje. Až když projde, je kontejner <code>healthy</code> a závislé služby se smí spustit.</dd>
-    <dt>MCP stdio</dt><dd>Způsob připojení MCP serveru, kdy Claude Code spustí proces (u nás <code>docker compose run --rm -T …</code>) a komunikuje s ním přes jeho standardní vstup a výstup. Bez portů a bez sítě.</dd>
+    <dt>ADR</dt><dd>Architecture Decision Record: krátký záznam jednoho zásadního rozhodnutí (kontext, rozhodnutí, důsledky) v <code>docs/adr/</code>. Neruší se, nahrazuje se novým.</dd>
     <dt>Agent / subagent</dt><dd>Model s vlastním zadáním, nástroji a kontextem. Subagenta spouští hlavní relace pro dílčí úkol a dostane od něj jen souhrn.</dd>
-    <dt>Skill</dt><dd>Složka se <code>SKILL.md</code>: postup nebo znalost, kterou si agent načte, až ji potřebuje, nebo ji spustíš příkazem (<code>/feature</code>).</dd>
-    <dt>Hook</dt><dd>Skript, který Claude Code spustí při události (před nástrojem, po editaci, při ukončení). Na rozdíl od promptu se provede vždy.</dd>
-    <dt>MCP</dt><dd>Model Context Protocol — standard, kterým se agentům připojují nástroje a data (dokumentace, prohlížeč, databáze, GitHub).</dd>
+    <dt>Audit log</dt><dd>Tabulka <code>audit_log</code>, do které aplikace zapisuje, kdo, kdy a co udělal (přihlášení, odhlášení, vytvoření účtu, vytvoření, úprava a smazání článku). Slouží k dohledání, co se stalo. Výpis s filtrem podle akce a data je na stránce <code>/admin/audit</code> (kapitola <a href="#m8">Audit a dokončení</a>).</dd>
+    <dt>Autowiring</dt><dd>Kontejner si závislosti zjistí z typů v konstruktoru, takže je nemusíš popisovat ručně.</dd>
     <dt>Brána (gate)</dt><dd>Místo v procesu, kde se čeká na rozhodnutí člověka.</dd>
-    <dt>Environment (GitHub)</dt><dd>Pojmenované cílové prostředí s vlastními secrets a pravidly schvalování nasazení.</dd>
-    <dt>GHCR</dt><dd>GitHub Container Registry — úložiště Docker obrazů vedle repozitáře.</dd>
-    <dt>Flash zpráva</dt><dd>Jednorázová zpráva uložená v session, která se ukáže na další stránce a po přečtení zmizí.</dd>
-    <dt>PRG</dt><dd>Post/Redirect/Get: po úspěšném POST server odpoví přesměrováním (303) na GET adresu, aby obnovení stránky neodeslalo formulář znovu.</dd>
-    <dt>Use-case</dt><dd>Třída, která řeší jeden úkol aplikace (vytvoř článek, smaž článek) a řídí pořadí kroků. Neví nic o HTTP ani o SQL.</dd>
-    <dt>Validace</dt><dd>Kontrola, zda vstup splňuje pravidla. Rozhoduje server; <code>required</code> a <code>maxlength</code> v HTML jsou jen nápověda.</dd>
-    <dt>Audit (audit log)</dt><dd>Tabulka <code>audit_log</code>, do které aplikace zapisuje, kdo, kdy a co udělal (přihlášení, odhlášení, vytvoření účtu, vytvoření, úprava a smazání článku). Slouží k dohledání, co se stalo.</dd>
     <dt>Cizí klíč</dt><dd>Sloupec odkazující na řádek jiné tabulky. Hlídá, aby odkaz nevisel do prázdna.</dd>
+    <dt>Compose profil</dt><dd>Štítek služby v <code>compose.yaml</code> (<code>profiles: [mcp]</code>). Služba s profilem se nespustí s <code>make up</code>, jen když ji vyžádáš (<code>--profile mcp</code>).</dd>
     <dt>Cookie</dt><dd>Malý text, který si prohlížeč uloží od serveru a posílá mu ho zpět s každým dalším požadavkem. Session cookie nese jen číslo session.</dd>
+    <dt>CSP</dt><dd>Content-Security-Policy: hlavička, která prohlížeči říká, odkud smí stránka načítat skripty, styly a obrázky. Naše je statická, bez nonce.</dd>
     <dt>CSRF</dt><dd>Útok, při kterém cizí web přiměje prohlížeč přihlášeného uživatele odeslat formulář na tvou stránku. Brání mu tajný token, který zná jen tvůj formulář.</dd>
+    <dt>Časové pásmo a UTC</dt><dd>UTC je světový čas bez letního posunu. Co plní databáze (<code>DEFAULT CURRENT_TIMESTAMP</code>), je v UTC; co plní aplikace z <code>Clock</code>, je v Europe/Prague (ADR-0007). Sloupec <code>DATETIME</code> zónu neukládá.</dd>
+    <dt>Dekorátor</dt><dd>Třída se stejným rozhraním jako obalovaná třída, která přidává chování kolem jejího volání. <code>MeteredLlmClient</code> přidává limit, cenu a log.</dd>
     <dt>DI kontejner</dt><dd>Objekt, který vytváří třídy a doplňuje jim závislosti podle konstruktoru.</dd>
+    <dt>Docker</dt><dd>Nástroj, který spouští aplikace v izolovaných kontejnerech z předpřipravených obrazů. Díky němu na počítači nepotřebuješ PHP ani databázi.</dd>
+    <dt>Environment (GitHub)</dt><dd>Pojmenované cílové prostředí s vlastními secrets a pravidly schvalování nasazení.</dd>
+    <dt>Falešný klient</dt><dd><code>FakeLlmClient</code>: deterministická náhrada modelu bez sítě a bez klíče. Slouží k výuce a testům, nevypovídá o kvalitě skutečného modelu.</dd>
+    <dt>Flash zpráva</dt><dd>Jednorázová zpráva uložená v session, která se ukáže na další stránce a po přečtení zmizí.</dd>
+    <dt>GHCR</dt><dd>GitHub Container Registry — úložiště Docker obrazů vedle repozitáře.</dd>
+    <dt>GET formulář</dt><dd>Formulář s <code>method="get"</code>: hodnoty jdou do adresy. Hodí se pro hledání a filtry, protože nic nemění, nepotřebuje CSRF token a adresu jde sdílet.</dd>
     <dt>Hash (hash hesla)</dt><dd>Jednosměrný otisk hesla. Z hesla se spočítá snadno, z otisku se heslo zpět získat nedá. U nás argon2id, záměrně pomalý a paměťově náročný.</dd>
+    <dt>Healthcheck</dt><dd>Příkaz, kterým Docker opakovaně zjišťuje, zda služba opravdu funguje. Až když projde, je kontejner <code>healthy</code> a závislé služby se smí spustit.</dd>
+    <dt>Hook</dt><dd>Skript, který Claude Code spustí při události (před nástrojem, po editaci, při ukončení). Na rozdíl od promptu se provede vždy.</dd>
+    <dt>Kompoziční kořen</dt><dd>Jediné místo, kde se objekty skládají dohromady (<code>config/container.php</code>).</dd>
+    <dt>LEFT JOIN</dt><dd>Spojení tabulek, které zachová i řádky bez protějšku. Ve výpisu audit logu se tak neztratí záznam bez uživatele.</dd>
+    <dt>LLM</dt><dd>Large Language Model, jazykový model. Na vstupní text odpovídá dalším textem.</dd>
+    <dt>MCP</dt><dd>Model Context Protocol — standard, kterým se agentům připojují nástroje a data (dokumentace, prohlížeč, databáze, GitHub).</dd>
+    <dt>MCP stdio</dt><dd>Způsob připojení MCP serveru, kdy Claude Code spustí proces (u nás <code>docker compose run --rm -T …</code>) a komunikuje s ním přes jeho standardní vstup a výstup. Bez portů a bez sítě.</dd>
     <dt>Middleware</dt><dd>Vrstva kolem zpracování požadavku, např. zachytávání chyb.</dd>
     <dt>Middleware řetěz</dt><dd>Seznam middleware, kterým požadavek prochází od nejvnější vrstvy dovnitř a odpověď zpět ven. Každá vrstva může požadavek pustit dál, nebo rovnou odpovědět.</dd>
     <dt>Migrace</dt><dd>Soubor s kódem pro změnu schématu databáze, který jde provést i vrátit.</dd>
     <dt>N+1 dotaz</dt><dd>Chyba, kdy se jedním dotazem načte seznam a pak se pro každou položku pošle ještě jeden dotaz. Řeší se <code>JOIN</code>em nebo jedním dotazem <code>IN (…)</code>.</dd>
+    <dt>PRG</dt><dd>Post/Redirect/Get: po úspěšném POST server odpoví přesměrováním (303) na GET adresu, aby obnovení stránky neodeslalo formulář znovu.</dd>
+    <dt>Prompt</dt><dd>Vstup pro model: systémový prompt (role a pravidla) a zprávy uživatele.</dd>
+    <dt>Prompt injection</dt><dd>Útok, při kterém se v datech (třeba v článku) skrývá pokyn pro model. Obrana: oddělit data od pokynů, nedat modelu nástroje a výstup brát jako nedůvěryhodný.</dd>
     <dt>Renderer</dt><dd>Třída, která převede vstup na výstup k zobrazení. <code>MarkdownRenderer</code> mění Markdown na bezpečné HTML.</dd>
     <dt>Router</dt><dd>Část aplikace, která podle metody a cesty vybere controller.</dd>
     <dt>Seed</dt><dd>Skript, který naplní databázi ukázkovými daty (<code>make seed</code>). Náš doplňuje jen chybějící záznamy a běží jen ve vývoji.</dd>
     <dt>Session</dt><dd>Data o jednom návštěvníkovi uložená na serveru. Prohlížeč pozná „svoji“ session podle cookie s jejím číslem.</dd>
+    <dt>Skill</dt><dd>Složka se <code>SKILL.md</code>: postup nebo znalost, kterou si agent načte, až ji potřebuje, nebo ji spustíš příkazem (<code>/feature</code>).</dd>
     <dt>Slug</dt><dd>Část adresy, která pojmenuje záznam (<code>ukazka-markdownu</code>). Smí obsahovat jen malá písmena, číslice a pomlčky.</dd>
+    <dt>Stavový řádek (reason phrase)</dt><dd>První řádek HTTP odpovědi, například <code>HTTP/1.1 404 Not Found</code>. Číslo říká stroji, text je pro člověka.</dd>
     <dt>Stránkování</dt><dd>Rozdělení dlouhého výpisu na strany. U nás po deseti článcích, číslo strany je v <code>?strana=N</code>.</dd>
-    <dt>Dekorátor</dt><dd>Třída se stejným rozhraním jako obalovaná třída, která přidává chování kolem jejího volání. <code>MeteredLlmClient</code> přidává limit, cenu a log.</dd>
-    <dt>Falešný klient</dt><dd><code>FakeLlmClient</code>: deterministická náhrada modelu bez sítě a bez klíče. Slouží k výuce a testům, nevypovídá o kvalitě skutečného modelu.</dd>
-    <dt>LLM</dt><dd>Large Language Model, jazykový model. Na vstupní text odpovídá dalším textem.</dd>
-    <dt>Prompt</dt><dd>Vstup pro model: systémový prompt (role a pravidla) a zprávy uživatele.</dd>
-    <dt>Prompt injection</dt><dd>Útok, při kterém se v datech (třeba v článku) skrývá pokyn pro model. Obrana: oddělit data od pokynů, nedat modelu nástroje a výstup brát jako nedůvěryhodný.</dd>
     <dt>Structured output</dt><dd>Strukturovaný výstup: model vrací JSON podle schématu místo volného textu. Tvar a délky navíc ověřuje PHP.</dd>
     <dt>Token</dt><dd>Kousek textu, v jakém model čte a píše (zhruba 3 až 4 znaky). Podle tokenů se počítá limit i cena.</dd>
+    <dt>Use-case</dt><dd>Třída, která řeší jeden úkol aplikace (vytvoř článek, smaž článek) a řídí pořadí kroků. Neví nic o HTTP ani o SQL.</dd>
+    <dt>Validace</dt><dd>Kontrola, zda vstup splňuje pravidla. Rozhoduje server; <code>required</code> a <code>maxlength</code> v HTML jsou jen nápověda.</dd>
+    <dt>Vrstvy aplikace</dt><dd>Rozdělení kódu na Http, Application, Domain a Infrastructure. Závislosti míří dovnitř k Domain.</dd>
+    <dt>XSS</dt><dd>Cross-site scripting: do stránky se dostane cizí skript, protože se text vypsal bez escapování. Brání mu <code>e()</code>.</dd>
     <!-- AGENT: doplňuj pojmy z dalších kapitol (abecedně) -->
   </dl>
 </section>
