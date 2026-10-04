@@ -23,6 +23,9 @@ metadata:
 - **PHP obraz nemá `intl`** (jen `pdo_mysql`, `opcache` + výchozí `mbstring`) → české datum vlastním polem měsíců.
 - **`Request` zahazuje ne-řetězce z `$_POST`/`$_GET`** → pole formuláře `tags[]` potřebují `inputList()`
   (plán 005). `TestContainer::replaceArticleDependencies` musí nahrazovat každý nový repozitář.
+- **nginx `fastcgi_read_timeout 30s`** (`docker/nginx/default.conf`) — dlouhá volání (LLM) potřebují zvýšit
+  (plán 006 navrhl 120 s). **`Session` ukládá jen `string|int`** → strukturovaná data přes JSON.
+  Kontejner `app` dostává jen proměnné vyjmenované v `compose.yaml` `environment:` (`.env` je `/dev/null`).
 - **Kolace `utf8mb4_czech_ci` + PAD SPACE**: `WHERE slug = ?` ignoruje velikost písmen a koncové mezery →
   slug z URL validovat regexem před dotazem.
 

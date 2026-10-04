@@ -14,8 +14,8 @@ metadata:
 - Dev mount `app` je `.:/app:ro` + rw podadresáře; nové top-level adresáře (`config/`,
   `templates/`) jsou v kontejneru jen ke čtení — pro čtení stačí, prod obraz (M9) je musí kopírovat.
 - Číslování plánů: 002 = M2, 003 = M3 (přihlášení), 004 = M4 (veřejná část, zúžená; rubriky/štítky/
-  hledání = M4b), 005 = M5 (administrace článků, zúžená; CRUD rubrik/štítků = M5b); CI (slibované už
-  od 001) dostane 006 nebo další volné. Migrační heslo v `app` je od M2. Backlog M4b/M5b má být ve
+  hledání = M4b), 005 = M5 (administrace článků, zúžená; CRUD rubrik/štítků = M5b), 006 = M6 (AI jádro,
+  tabulka `ai_calls`, migrace `202610030007`); CI (slibované už od 001) dostane 007 nebo další volné. Migrační heslo v `app` je od M2. Backlog M4b/M5b má být ve
   STAV.md — po M4 tam chyběl, ověř.
 - Seed (M4 návrh): `database/seeds/demo_content.php` vrací objekt `Infrastructure\Seed\Seed`, příkaz
   `db:seed` (otázka 3 plánu 004), běží jako `redakce_app`, jen doplňuje podle slugu, nic nemaže.

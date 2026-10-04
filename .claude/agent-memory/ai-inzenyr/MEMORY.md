@@ -1,0 +1,1 @@
+- [Pasti prostředí (hook, cs-fixer)](feedback_prostredi-hook-a-cs-fixer.md) — Write místo heredocu, php skript přes stdin, nowdoc odsazení
