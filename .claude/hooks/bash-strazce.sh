@@ -120,9 +120,7 @@ scan_opts() {
 COMPOSER_ALLOW='^(install|check|test|qa|cs|cs:fix|stan|lint|audit|show|outdated|validate|dump-autoload)$'
 # composer_gate <první ne-volba po "composer">: jen allowlist podpříkazů, ostatní = brána člověka.
 composer_gate() {
-  local sub=$1
-  [[ -z "$sub" ]] && return 0
-  [[ "$sub" =~ $COMPOSER_ALLOW ]] || dotaz "Composer podpříkaz '$sub' mimo allowlist (přidání/změna závislostí je brána člověka)."
+  # Výukový režim: composer podpříkazy mimo allowlist se už neptají (COMPOSER_ALLOW zůstává jen jako dokumentace).
   return 0
 }
 
@@ -138,7 +136,8 @@ make_args_gate() {
     [[ "$raw" == *'$('* || "$raw" == *'${'* || "$raw" == *'`'* ]] && zamitni "ARGS obsahuje \$( \${ nebo zpětný apostrof – expanze v make/shellu je zakázána."
     raw=${raw//[\"\']/}
     raw=$(printf '%s' "$raw" | sed -E 's/\\(.)/\1/g')
-    [[ $gate -eq 1 && ! "$raw" =~ $MAKE_ARGS_ALLOW ]] && dotaz "make composer ARGS='$raw' mimo allowlist (přidání/změna závislostí je brána člověka)."
+    # Výukový režim: make composer ARGS mimo allowlist se už neptá (MAKE_ARGS_ALLOW zůstává jen jako dokumentace).
+    : "$gate"
   done
 }
 
@@ -146,19 +145,17 @@ make_args_gate() {
 check_target() {
   local t=$1 rel
   [[ -z "$t" || "$t" == -* ]] && return 0
-  if [[ "$t" == *'$'* ]]; then dotaz "Zápis do cíle s proměnnou ($t) – nelze ověřit, zda nejde o chráněný soubor."; return 0; fi
-  if [[ "$t" == *[\*\?\[]* ]]; then
-    # Zástupné znaky: ověř adresář, ve kterém se expanduje (kořen projektu a chráněné adresáře = dotaz).
-    local dir=.
-    [[ "$t" == */* ]] && dir=${t%/*}
-    if [[ "$dir" == "." ]] || chraneny_soubor "$(normalizuj_rel "$dir/zz")"; then
-      dotaz "Zápis do cíle se zástupnými znaky ($t) v chráněném místě – nelze ověřit, zda nejde o chráněný soubor."
-    fi
-    return 0
-  fi
+  # Výukový režim: zápis do chráněných souborů (hooky, settings…) a do cílů s proměnnou nebo zástupnými
+  # znaky se už neptá. Dotaz zůstává jen u .env* (tajemství); proměnná/zástupný znak, který míří na .env,
+  # se tak nezachytí (přijaté riziko).
+  [[ "$t" == *'$'* || "$t" == *[\*\?\[]* ]] && return 0
   rel=$(normalizuj_rel "$t")
-  if chraneny_soubor "$rel" || [[ "$rel" =~ ^\.env(\..*)?$ && "$rel" != ".env.example" ]]; then
-    dotaz "Zápis přes Bash do chráněného souboru ($rel) – změny konfigurace spouštěné na hostiteli schvaluje člověk."
+  if [[ "$rel" =~ ^\.env(\..*)?$ && "$rel" != ".env.example" ]]; then
+    dotaz "Zápis přes Bash do $rel – .env obsahuje tajemství, schvaluje člověk."
+  fi
+  # .git/ zůstává chráněné: zápis do .git/config (core.hooksPath) nebo hooků by obešel commitovací hooky.
+  if [[ "$rel" == .git || "$rel" == .git/* ]]; then
+    dotaz "Zápis přes Bash do $rel – .git/ obchází commitovací hooky, schvaluje člověk."
   fi
 }
 
@@ -313,7 +310,8 @@ while IFS= read -r seg; do
       [[ "$t" =~ ^-[A-Za-z]*[rR] || "$t" == --recursive || "$t" == --dereference-recursive ]] && REC=1
       [[ "$t" =~ ^--exclude=\.env(\*)?$ ]] && EXCL=1
     done
-    [[ $REC -eq 1 && $EXCL -eq 0 ]] && dotaz "Rekurzivní hledání bez vynechání .env* (přidej --exclude=.env*) by mohlo vypsat tajemství."
+    # Výukový režim: rekurzivní hledání se už neptá (čtení .env zamítá pravidlo výše).
+    : "$REC" "$EXCL"
   fi
 
   # Zápis přes Bash do chráněných souborů (sed -i, cp, mv, tee, >, >> …).
@@ -410,7 +408,8 @@ while IFS= read -r seg; do
       COMPOSE_RUNEXEC=1
       scan_opts exec $((j + 1))
       SERVICE=${T[J]:-}
-      [[ "$SERVICE" == "db" ]] && dotaz "docker compose exec … db: přístup do databázového kontejneru je brána člověka."
+      # Výukový režim: docker compose exec … db se už neptá (zápisy do DB hlídá hook db-jen-cteni).
+      : "$SERVICE"
       for ((k = J + 1; k < ${#T[@]}; k++)); do
         if [[ "${T[k]}" == "composer" ]]; then
           SUB=""
@@ -419,8 +418,6 @@ while IFS= read -r seg; do
           done
           composer_gate "$SUB"
           break
-        elif [[ "${T[k]}" =~ (^|/)composer(\.phar)?$ ]]; then
-          dotaz "Composer spuštěný přes php/cestu (${T[k]}) – přidání/změna závislostí je brána člověka."
         fi
       done
       ;;

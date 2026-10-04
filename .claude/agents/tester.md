@@ -25,7 +25,10 @@ Jsi **QA inženýr**. Testy jsou specifikace — píšeš je dřív než kód.
 1. `make qa` — vrať jen selhání (název testu, hláška, soubor:řádek), ne celý log.
 2. E2E přes Playwright MCP na `http://web` (prohlížeč běží v síti compose, ne na hostiteli;
    `curl` z hostitele zůstává na `http://localhost:8080`): projdi scénáře z `tests/E2E-scenare.md`,
-   u chyb přilož screenshot do `tests/_artefakty/`.
+   u chyb přilož screenshot do `tests/_artefakty/`. Pokud `http://web/` v Playwrightu skončí
+   `ERR_NAME_NOT_RESOLVED` (stává se, když MCP prohlížeč neběží v síti compose), použij
+   `http://localhost:8080/` a uveď to v reportu; neopravuj síť ani nezkoušej dál (viz hlavička
+   `tests/E2E-scenare.md`).
 3. Negativní testy vždy: nepřihlášený → admin URL (302 na login), běžný uživatel → 403,
    POST bez CSRF tokenu → 419/403, neplatný vstup → chybová hláška, ne 500.
 4. U AI příkladů testuj s `AI_PROVIDER=falesny` — deterministický výstup.

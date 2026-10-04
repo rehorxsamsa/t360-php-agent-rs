@@ -1,2 +1,2 @@
-- [Hook curl + Playwright omezení](project_hook-curl-zavinac.md) — curl: %40, URL bez uvozovek/proměnných, žádné PUT/-o soubor; Playwright jen localhost:8080, screenshot s abs. cestou
-- [Režim A souběžně s implementátory](project_rezim-a-soubezne.md) — část testů hned zelená; neupřesněné konstruktory v AiFixtures, skládat přes kontejner
+- [Hook curl + Playwright omezení](project_hook-curl-zavinac.md) — curl: %40, URL bez uvozovek/proměnných/"$@", žádné PUT/-o soubor; Playwright jen localhost:8080 (date MMDDRRRR); počet dotazů přes Com_select
+- [Režim A souběžně s implementátory](project_rezim-a-soubezne.md) — část testů hned zelená; RED doložit v kopii HEAD (docker run); konstruktory v jednom pomocníkovi

@@ -63,3 +63,14 @@ se zmírňují ve prospěch rychlého spuštění a ukázky práce agentů; nemu
 ## Číslování plánů
 002–006 jsou M2–M6, **007 je M8** (audit log, opravy, tutoriál; M7 zatím nemá plán). Plán CI (`ci.yml`), původně slíbený
 jako 002, dostane číslo **008 nebo pozdější**; M7 dostane číslo, až se bude plánovat (návrh plánu 007: M7 = 008, CI = 009).
+
+## Úkoly pro M9 (z plánu 007)
+- `SESSION_COOKIE_SECURE`: kontejner `app` `.env` nevidí a `compose.yaml` proměnnou nepředává; pro produkci ji předat v
+  `compose.prod.yaml` (a doplnit do `.env.example` jen jako produkční příklad). Řádek `# SESSION_COOKIE_SECURE=1` v `.env.example` je dnes zavádějící.
+- `Secure` a `__Host-` cookie, omezení pokusů o přihlášení, timeouty session, CSP s nonce (viz tutoriál, oddíl „Vědomě vynecháno“).
+
+## Drobnosti po M8 (backlog, nízká priorita)
+- Router neumí `HEAD` na GET trasách (vrací 405); scénář U1.1 v `tests/E2E-scenare.md` proto neprojde.
+- `.audit-table td { overflow-wrap: anywhere; }` v `public/assets/app.css` láme slova na 375 px; omezit na sloupec Shrnutí.
+- Výstup `make seed` „Nově vloženo – časy: N.“ je formulačně nepřesný (časy se dorovnávají).
+- Slovníček v tutoriálu: „GET formulář“ patří před „GHCR“; krok „Filtrovat“ v kapitole M8 zmiňuje adresu bez prázdných `od=&do=`.

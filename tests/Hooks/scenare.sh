@@ -158,13 +158,13 @@ allow|docker compose exec -T app composer test
 deny|git commit --no-verify -m "x: y"
 deny|docker compose config
 allow|docker compose config --quiet
-ask|make composer ARGS="require foo/bar"
+allow|make composer ARGS="require foo/bar"
 deny|docker compose run --rm -v /:/host app sh
 allow|make qa
 allow|make composer ARGS="install"
-ask|make composer ARGS=-n\ require\ x
-ask|make composer ARGS="install" && make composer ARGS="require x/y"
-ask|make composer ARGS=install" require x"
+allow|make composer ARGS=-n\ require\ x
+allow|make composer ARGS="install" && make composer ARGS="require x/y"
+allow|make composer ARGS=install" require x"
 deny|make composer ARGS='install $(shell touch x)'
 deny|make check COMPOSE='touch x; echo'
 deny|make check "COMPOSE=touch pwned; echo dlouha hodnota s mezerami"
@@ -177,18 +177,18 @@ deny|git commit --no-veri -m "x: y"
 deny|git commit --amen -m "x: y"
 deny|git -c core.hooksPath=/x commit -m "x: y"
 allow|git commit -m "feat(x): popis"
-ask|docker compose exec -T app php /usr/local/bin/composer require foo/bar
-ask|docker compose exec -T app composer require foo/bar
+allow|docker compose exec -T app php /usr/local/bin/composer require foo/bar
+allow|docker compose exec -T app composer require foo/bar
 ask|docker volume rm t360_db_data
 ask|docker compose exec -T app php -i
 ask|docker compose exec -T app php -r 'print_r($_SERVER);'
 ask|docker compose exec -T app php -r 'echo file_get_contents(".env");'
-ask|cp /tmp/x GNUmakefile
-ask|cp /tmp/x ./compose.override.yml
-ask|echo x > /./Makefile
-ask|echo x >> ./docker/./php/Dockerfile
-ask|sed -i s/a/b/ Makefile
-ask|echo x | tee compose.override.yaml
+allow|cp /tmp/x GNUmakefile
+allow|cp /tmp/x ./compose.override.yml
+allow|echo x > /./Makefile
+allow|echo x >> ./docker/./php/Dockerfile
+allow|sed -i s/a/b/ Makefile
+allow|echo x | tee compose.override.yaml
 ask|echo x > .env
 allow|echo x > var/x.txt
 deny|cat .env
@@ -199,7 +199,7 @@ deny|cut -c1-5 .env
 deny|cat .env*
 deny|jq -n env
 allow|cat .env.example
-ask|grep -r PASSWORD .
+allow|grep -r PASSWORD .
 allow|grep -r PASSWORD . --exclude=.env*
 CASES
 
@@ -292,7 +292,7 @@ allow|make qa ARGS=x
 allow|make composer ARGS="install"
 allow|git commit -m "feat(x): MAKE env --no-verify --amend text"
 allow|git status --short
-ask|grep -r PASSWORD . --include=*.php
+allow|grep -r PASSWORD . --include=*.php
 allow|grep -r PASSWORD . --exclude=.env*
 CASES
 CMD_MULTI=$'git commit -m "feat(x): popis\n\ndruhy odstavec s php a env"'
