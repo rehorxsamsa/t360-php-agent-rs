@@ -10,7 +10,7 @@ use App\Infrastructure\Seed\Seed;
 use App\Tests\Integration\TestDatabase;
 use PHPUnit\Framework\TestCase;
 
-/** Ukázková data (plán 004, AC 22): kontrakt počtů, stavů a idempotence. */
+/** Ukázková data (plán 004, AC 22; plán 007, AC 19 a ADR-0007): kontrakt počtů, stavů, časů a idempotence. */
 final class DemoContentSeedTest extends TestCase
 {
     private \PDO $pdo;
@@ -34,11 +34,24 @@ final class DemoContentSeedTest extends TestCase
         return $seed;
     }
 
+    /**
+     * Výsledek seedu bez závislosti na pořadí klíčů.
+     *
+     * @param array<string, int> $result
+     * @return array<string, int>
+     */
+    private static function sorted(array $result): array
+    {
+        ksort($result);
+
+        return $result;
+    }
+
     public function test_first_run_inserts_contract_counts_and_returns_them(): void
     {
         $result = $this->seed()->run($this->pdo);
 
-        self::assertSame(['rubriky' => 3, 'štítky' => 5, 'články' => 16], $result);
+        self::assertSame(self::sorted(['rubriky' => 3, 'štítky' => 5, 'články' => 16, 'časy' => 0]), self::sorted($result));
         self::assertSame(3, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM categories'));
         self::assertSame(5, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM tags'));
         self::assertSame(16, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM articles'));
@@ -52,7 +65,7 @@ final class DemoContentSeedTest extends TestCase
 
         $second = $seed->run($this->pdo);
 
-        self::assertSame(['rubriky' => 0, 'štítky' => 0, 'články' => 0], $second);
+        self::assertSame(self::sorted(['rubriky' => 0, 'štítky' => 0, 'články' => 0, 'časy' => 0]), self::sorted($second));
         self::assertSame(3, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM categories'));
         self::assertSame(5, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM tags'));
         self::assertSame(16, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM articles'));
@@ -85,7 +98,7 @@ final class DemoContentSeedTest extends TestCase
 
         $result = $seed->run($this->pdo);
 
-        self::assertSame(['rubriky' => 0, 'štítky' => 0, 'články' => 1], $result);
+        self::assertSame(self::sorted(['rubriky' => 0, 'štítky' => 0, 'články' => 1, 'časy' => 0]), self::sorted($result));
     }
 
     public function test_article_statuses_match_contract(): void
@@ -186,5 +199,109 @@ final class DemoContentSeedTest extends TestCase
             ['Bezpečnost', 'Docker', 'PHP', 'Přístupnost', 'Umělá inteligence'],
             TestDatabase::column($this->pdo, 'SELECT name FROM tags ORDER BY name'),
         );
+    }
+
+    // ---------------------------------------------------------------- plán 007, AC 19: časy seedovaných článků
+
+    /** Očekávaný čas vytvoření a úpravy: published_at do konce září 2026, jinak 2026-09-01 08:00:00. */
+    private const string FALLBACK_TIME = '2026-09-01 08:00:00';
+
+    private const string LAST_SEED_DAY = '2026-09-30 23:59:59';
+
+    /** @param array<string, int> $result */
+    private static function value(array $result, string $key): int
+    {
+        self::assertArrayHasKey($key, $result);
+
+        return $result[$key];
+    }
+
+    /** @return list<array<string, string>> */
+    private function articleTimes(): array
+    {
+        return TestDatabase::rows(
+            $this->pdo,
+            "SELECT slug,
+                    DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created,
+                    DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated,
+                    COALESCE(DATE_FORMAT(published_at, '%Y-%m-%d %H:%i:%s'), '') AS published
+             FROM articles ORDER BY slug",
+        );
+    }
+
+    /** @param array<string, string> $row */
+    private static function expectedTime(array $row): string
+    {
+        return $row['published'] !== '' && $row['published'] <= self::LAST_SEED_DAY ? $row['published'] : self::FALLBACK_TIME;
+    }
+
+    public function test_seeded_articles_have_created_and_updated_at_from_publication_or_fallback(): void
+    {
+        $this->seed()->run($this->pdo);
+
+        $rows = $this->articleTimes();
+        self::assertCount(16, $rows);
+        foreach ($rows as $row) {
+            $expected = self::expectedTime($row);
+            self::assertSame($expected, $row['created'], 'created_at u ' . $row['slug']);
+            self::assertSame($expected, $row['updated'], 'updated_at u ' . $row['slug']);
+        }
+
+        $bySlug = array_column($rows, null, 'slug');
+        self::assertSame('2026-09-12 08:00:00', $bySlug['ukazka-markdownu']['updated']);
+        self::assertSame(self::FALLBACK_TIME, $bySlug['planovany-clanek']['updated'], 'publikace 2099 → náhradní čas');
+        self::assertSame(self::FALLBACK_TIME, $bySlug['rozepsany-koncept']['updated'], 'koncept bez publikace → náhradní čas');
+    }
+
+    public function test_untouched_seeded_article_with_wrong_times_is_reconciled(): void
+    {
+        $seed = $this->seed();
+        $seed->run($this->pdo);
+        $this->pdo->exec(
+            "UPDATE articles SET created_at = '2026-10-04 08:00:00', updated_at = '2026-10-04 09:00:00'
+             WHERE slug IN ('prvni-clanek', 'rozepsany-koncept')",
+        );
+
+        $result = $seed->run($this->pdo);
+
+        self::assertSame(2, self::value($result, 'časy'));
+        self::assertSame(0, self::value($result, 'články'));
+        $bySlug = array_column($this->articleTimes(), null, 'slug');
+        self::assertSame('2026-09-01 08:00:00', $bySlug['prvni-clanek']['created']);
+        self::assertSame('2026-09-01 08:00:00', $bySlug['prvni-clanek']['updated']);
+        self::assertSame(self::FALLBACK_TIME, $bySlug['rozepsany-koncept']['created']);
+        self::assertSame(self::FALLBACK_TIME, $bySlug['rozepsany-koncept']['updated']);
+    }
+
+    public function test_article_edited_in_administration_keeps_its_times(): void
+    {
+        $seed = $this->seed();
+        $seed->run($this->pdo);
+        $this->pdo->exec("INSERT INTO users (email, display_name, password_hash) VALUES ('admin@example.cz', 'Administrátor', 'h')");
+        $userId = (int) $this->pdo->lastInsertId();
+        $statement = $this->pdo->prepare(
+            "UPDATE articles SET updated_by = :user, updated_at = '2026-10-04 09:00:00' WHERE slug = 'ukazka-markdownu'",
+        );
+        $statement->execute(['user' => $userId]);
+
+        $result = $seed->run($this->pdo);
+
+        self::assertSame(0, self::value($result, 'časy'));
+        $bySlug = array_column($this->articleTimes(), null, 'slug');
+        self::assertSame('2026-10-04 09:00:00', $bySlug['ukazka-markdownu']['updated']);
+        self::assertSame('2026-09-12 08:00:00', $bySlug['ukazka-markdownu']['created']);
+    }
+
+    public function test_second_run_after_reconciliation_reports_nothing(): void
+    {
+        $seed = $this->seed();
+        $seed->run($this->pdo);
+        $this->pdo->exec("UPDATE articles SET updated_at = '2026-10-04 09:00:00' WHERE slug = 'prvni-clanek'");
+        self::assertSame(1, self::value($seed->run($this->pdo), 'časy'));
+
+        $third = $seed->run($this->pdo);
+
+        self::assertSame(0, self::value($third, 'časy'));
+        self::assertSame(0, self::value($third, 'články'));
     }
 }

@@ -7,6 +7,25 @@ namespace App\Http;
 final readonly class Response
 {
     /**
+     * Texty stavového řádku (RFC 9110) pro kódy, které aplikace vrací. PHP-FPM zná jen část z nich
+     * (422 ne) a nginx pak pošle `HTTP/1.1 422 ` bez textu – proto ho aplikace posílá sama.
+     *
+     * @var array<int, string>
+     */
+    private const array REASON_PHRASES = [
+        200 => 'OK',
+        303 => 'See Other',
+        403 => 'Forbidden',
+        404 => 'Not Found',
+        405 => 'Method Not Allowed',
+        422 => 'Unprocessable Content',
+        429 => 'Too Many Requests',
+        500 => 'Internal Server Error',
+        502 => 'Bad Gateway',
+        503 => 'Service Unavailable',
+    ];
+
+    /**
      * @param array<string, string> $headers název hlavičky => hodnota
      */
     public function __construct(
@@ -86,9 +105,21 @@ final readonly class Response
         return new self($this->status, array_merge($this->headers, $headers), $this->body);
     }
 
+    /** Text stavového řádku (`422` → `Unprocessable Content`); neznámý kód vrací ''. */
+    public static function reasonPhrase(int $status): string
+    {
+        return self::REASON_PHRASES[$status] ?? '';
+    }
+
     public function send(): void
     {
-        http_response_code($this->status);
+        $reason = self::reasonPhrase($this->status);
+        if ($reason === '') {
+            http_response_code($this->status);
+        } else {
+            // Z hlavičky `HTTP/1.1 …` převezme PHP-FPM text do `Status:` a nginx ho předá klientovi.
+            header(sprintf('HTTP/1.1 %d %s', $this->status, $reason), true, $this->status);
+        }
         foreach ($this->headers as $name => $value) {
             header($name . ': ' . $value);
         }

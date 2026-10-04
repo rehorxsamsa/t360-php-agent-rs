@@ -8,9 +8,9 @@ namespace App\Infrastructure\Seed;
 interface Seed
 {
     /**
-     * Doplní chybějící data (nic nemaže ani nepřepisuje).
+     * Doplní chybějící data (nic nemaže; přepsat smí jen vlastní řádky, které nikdo neupravil).
      *
-     * @return array<string, int> počty nově vložených řádků s popisky, např. `['rubriky' => 3]`
+     * @return array<string, int> počty nově vložených (nebo dorovnaných) řádků s popisky, např. `['rubriky' => 3]`
      */
     public function run(\PDO $pdo): array;
 }

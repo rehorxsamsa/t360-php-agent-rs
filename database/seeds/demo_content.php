@@ -7,11 +7,22 @@ use App\Infrastructure\Seed\Seed;
 /**
  * Ukázková data (plán 004, §5): 3 rubriky, 5 štítků, 16 článků ve všech stavech.
  *
- * Doplňuje jen chybějící záznamy podle slugu, nic nemaže ani nepřepisuje, takže je
- * opakované spuštění bezpečné. Žádné osobní údaje, `created_by`/`updated_by` zůstávají NULL.
+ * Doplňuje jen chybějící záznamy podle slugu, nic nemaže, takže je opakované spuštění bezpečné.
+ * Žádné osobní údaje, `created_by`/`updated_by` zůstávají NULL.
  * Obsah je záměrně česky (testovací data), identifikátory anglicky.
+ *
+ * Časy článků (ADR-0007, plán 007 AC 19): `articles` plní aplikace v pražském čase, proto seed
+ * vyplní `created_at` = `updated_at` sám (datum publikace, jinak 1. 9. 2026 08:00). Seedované články,
+ * které nikdo v administraci neupravil (`created_by` i `updated_by` NULL), seed na tyto časy dorovná
+ * – dřív je plnila výchozí hodnota DB v UTC. Jediná výjimka z pravidla „nic nepřepisuje“.
  */
 return new class implements Seed {
+    /** Čas vytvoření článku bez data publikace (koncept) nebo s datem po konci září (naplánovaný). */
+    private const string DEFAULT_TIMESTAMP = '2026-09-01 08:00:00';
+
+    /** Nejpozdější datum publikace, které se použije i jako čas vytvoření (pozdější = budoucnost). */
+    private const string LATEST_TIMESTAMP = '2026-09-30 23:59:59';
+
     /** @var list<array{0: string, 1: string}> slug => název rubriky */
     private const array CATEGORIES = [
         ['zpravy', 'Zprávy'],
@@ -59,12 +70,14 @@ return new class implements Seed {
         }
 
         $newArticles = 0;
+        $alignedTimes = 0;
         foreach ($this->articles() as $article) {
+            $timestamp = self::timestamp($article['published_at']);
             $articleId = $this->findId($pdo, 'articles', $article['slug']);
             if ($articleId === null) {
                 $stmt = $pdo->prepare(
-                    'INSERT INTO articles (category_id, title, slug, excerpt, body, status, published_at)
-                     VALUES (:category_id, :title, :slug, :excerpt, :body, :status, :published_at)'
+                    'INSERT INTO articles (category_id, title, slug, excerpt, body, status, published_at, created_at, updated_at)
+                     VALUES (:category_id, :title, :slug, :excerpt, :body, :status, :published_at, :created_at, :updated_at)'
                 );
                 $stmt->execute([
                     'category_id' => $categoryIds[$article['category']],
@@ -74,9 +87,13 @@ return new class implements Seed {
                     'body' => $article['body'],
                     'status' => $article['status'],
                     'published_at' => $article['published_at'],
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
                 ]);
                 $articleId = (int) $pdo->lastInsertId();
                 ++$newArticles;
+            } else {
+                $alignedTimes += $this->alignTimes($pdo, $article['slug'], $timestamp);
             }
 
             foreach ($article['tags'] as $tagSlug) {
@@ -93,7 +110,35 @@ return new class implements Seed {
             }
         }
 
-        return ['rubriky' => $newCategories, 'štítky' => $newTags, 'články' => $newArticles];
+        return ['rubriky' => $newCategories, 'štítky' => $newTags, 'články' => $newArticles, 'časy' => $alignedTimes];
+    }
+
+    /** Čas vytvoření i poslední úpravy seedovaného článku (pražský čas, ADR-0007). */
+    private static function timestamp(?string $publishedAt): string
+    {
+        return $publishedAt !== null && $publishedAt <= self::LATEST_TIMESTAMP ? $publishedAt : self::DEFAULT_TIMESTAMP;
+    }
+
+    /**
+     * Dorovná časy seedovaného článku, který nikdo v administraci neupravil; vrací počet změněných řádků (0/1).
+     * Každý pojmenovaný parametr je v dotazu jen jednou (emulace prepared statements je vypnutá).
+     */
+    private function alignTimes(\PDO $pdo, string $slug, string $timestamp): int
+    {
+        $stmt = $pdo->prepare(
+            'UPDATE articles SET created_at = :created_at, updated_at = :updated_at
+             WHERE slug = :slug AND created_by IS NULL AND updated_by IS NULL
+               AND (created_at <> :current_created_at OR updated_at <> :current_updated_at)'
+        );
+        $stmt->execute([
+            'created_at' => $timestamp,
+            'updated_at' => $timestamp,
+            'slug' => $slug,
+            'current_created_at' => $timestamp,
+            'current_updated_at' => $timestamp,
+        ]);
+
+        return $stmt->rowCount();
     }
 
     /** Tabulka je vždy z pevného seznamu v této třídě, nikdy ze vstupu. */

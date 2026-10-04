@@ -10,6 +10,7 @@
     <ul>
         <li><a href="/admin/clanky">Články</a></li>
         <li><a href="/admin/ai">AI nástroje</a></li>
+        <li><a href="/admin/audit">Audit log</a></li>
     </ul>
 </nav>
 <form method="post" action="/admin/odhlaseni">

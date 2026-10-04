@@ -78,6 +78,35 @@ final class RequestListTest extends TestCase
         self::assertSame([], Request::fromGlobals()->inputList('tags'));
     }
 
+    /** Plán 007, AC 17: pole s neplatnou strukturou je „odeslané, ale bez platné hodnoty“, ne „neodeslané“. */
+    public function test_nested_array_field_is_present_as_empty_list(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI'] = '/admin/ai/05';
+        $_POST = ['model' => [['x']]];
+
+        $request = Request::fromGlobals();
+
+        self::assertArrayHasKey('model', $request->bodyLists);
+        self::assertSame([], $request->bodyLists['model']);
+        self::assertSame('', $request->input('model'));
+        self::assertSame([], $request->inputList('model'));
+    }
+
+    public function test_mixed_list_field_is_present_as_empty_list(): void
+    {
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['REQUEST_URI'] = '/admin/clanky/novy';
+        $_POST = ['tags' => ['1', ['2']]];
+
+        self::assertSame(['tags' => []], Request::fromGlobals()->bodyLists);
+    }
+
+    public function test_valid_lists_are_unchanged_next_to_invalid_ones(): void
+    {
+        self::assertSame(['tags' => ['3', '5'], 'x' => [], 'y' => ['b']], $this->fromGlobals()->bodyLists);
+    }
+
     public function test_constructor_accepts_lists(): void
     {
         $request = new Request('POST', '/admin/clanky/novy', bodyLists: ['tags' => ['1', '2']]);

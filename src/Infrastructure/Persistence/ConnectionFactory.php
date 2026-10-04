@@ -27,11 +27,17 @@ final readonly class ConnectionFactory
             $this->config->name,
         );
 
-        return new \PDO($dsn, $this->config->user, $this->config->password, [
+        $pdo = new \PDO($dsn, $this->config->user, $this->config->password, [
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
             \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
             \PDO::ATTR_EMULATE_PREPARES => false,
             \PDO::ATTR_TIMEOUT => self::CONNECT_TIMEOUT_SECONDS,
         ]);
+
+        // ADR-0007: výchozí hodnoty DB (CURRENT_TIMESTAMP) jsou v UTC nezávisle na nastavení serveru.
+        // Pevný literál, žádný vstup – proto exec() místo prepared statementu.
+        $pdo->exec("SET time_zone = '+00:00'");
+
+        return $pdo;
     }
 }

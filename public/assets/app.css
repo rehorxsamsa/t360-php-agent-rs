@@ -384,3 +384,44 @@ form button.button-danger,
     color: var(--muted);
     font-size: 0.875rem;
 }
+
+/* Audit log: filtr vedle sebe, na úzkém displeji pod sebou; tabulka znovu .admin-table v .table-wrapper. */
+.audit-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
+    margin: 0 0 1.25rem;
+}
+
+.audit-filter .field {
+    flex: 1 1 12rem;
+    margin: 0;
+}
+
+form input[type="date"] {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    font: inherit;
+    background: #fff;
+    color: var(--text);
+}
+
+.audit-filter .actions {
+    flex: 0 0 auto;
+}
+
+.audit-errors ul {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
+}
+
+.audit-table td {
+    overflow-wrap: anywhere;
+}
+
+.audit-table td:first-child {
+    white-space: nowrap;
+}

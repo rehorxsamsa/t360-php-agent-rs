@@ -12,7 +12,9 @@ final readonly class Request
      * @param array<string, string> $routeParameters hodnoty ze zástupných částí trasy (doplní RoutingMiddleware)
      * @param array<string, string> $body řetězcové hodnoty z POST formuláře (ne-řetězce se zahazují)
      * @param array<string, string> $query řetězcové hodnoty z query stringu (ne-řetězce se zahazují)
-     * @param array<string, list<string>> $bodyLists jednoúrovňová pole řetězců z POST (`tags[]`), bez klíčů
+     * @param array<string, list<string>> $bodyLists jednoúrovňová pole řetězců z POST (`tags[]`), bez klíčů;
+     *     pole s neplatnou strukturou (vnořená pole, `model[][]=x`) je tu jako prázdný seznam – bylo odesláno,
+     *     ale nemá platnou hodnotu (formulář ho tak odmítne, místo aby ho bral jako neodeslané)
      */
     public function __construct(
         public string $method,
@@ -86,10 +88,7 @@ final readonly class Request
             if (is_string($value)) {
                 $body[(string) $name] = $value;
             } elseif (is_array($value)) {
-                $list = self::stringList($value);
-                if ($list !== null) {
-                    $bodyLists[(string) $name] = $list;
-                }
+                $bodyLists[(string) $name] = self::stringList($value) ?? [];
             }
         }
 
@@ -111,7 +110,7 @@ final readonly class Request
     }
 
     /**
-     * Jen pole, jehož všechny položky jsou řetězce (vnořená pole celé pole zneplatní); klíče se zahodí.
+     * Jen pole, jehož všechny položky jsou řetězce (vnořená pole celé pole zneplatní → null); klíče se zahodí.
      *
      * @param array<mixed> $values
      * @return list<string>|null

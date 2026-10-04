@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controller\Admin\AiController;
 use App\Http\Controller\Admin\ArticleController as AdminArticleController;
+use App\Http\Controller\Admin\AuditLogController;
 use App\Http\Controller\Admin\DashboardController;
 use App\Http\Controller\Admin\LoginController;
 use App\Http\Controller\ArticleController;
@@ -32,4 +33,5 @@ return static function (Router $router): void {
     $router->get('/admin/ai', [AiController::class, 'index']);
     $router->get('/admin/ai/{example}', [AiController::class, 'show']);
     $router->post('/admin/ai/{example}', [AiController::class, 'run']);
+    $router->get('/admin/audit', [AuditLogController::class, 'index']);
 };

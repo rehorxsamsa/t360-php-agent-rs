@@ -532,6 +532,32 @@ final class AdminAiTest extends TestCase
         self::assertSame([], $this->aiCalls->calls);
     }
 
+    /** Plán 007, AC 17: `model[][]=x` z prohlížeče (přes Request::fromGlobals) je neplatná volba, ne výchozí model. */
+    public function test_translation_with_nested_model_array_from_globals_is_422(): void
+    {
+        $llm = new ScriptedLlmClient();
+        $this->boot($llm);
+        $this->signIn();
+        $server = $_SERVER;
+        $post = $_POST;
+        try {
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $_SERVER['REQUEST_URI'] = '/admin/ai/05';
+            $_SERVER['REMOTE_ADDR'] = '172.18.0.1';
+            $_POST = ['_csrf' => $this->csrf(), 'article' => 'demo', 'model' => [['x']]];
+
+            $response = $this->kernel->handle(Request::fromGlobals());
+        } finally {
+            $_SERVER = $server;
+            $_POST = $post;
+        }
+
+        self::assertSame(422, $response->status);
+        self::assertAlert($response->body, 'Vyberte model ze seznamu.');
+        self::assertSame([], $llm->requests);
+        self::assertSame([], $this->aiCalls->calls);
+    }
+
     public function test_model_field_is_ignored_for_examples_without_model_choice(): void
     {
         $this->signIn();
