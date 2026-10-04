@@ -61,4 +61,5 @@ se zmírňují ve prospěch rychlého spuštění a ukázky práce agentů; nemu
 - **Testovací účty v dev DB:** `admin@example.cz`, `qa-m3@example.test`, `t2b-test@example.cz` (jen lokální výuková data).
 
 ## Číslování plánů
-Plán CI (`ci.yml`) původně slíbený jako 002 dostane číslo **007 nebo pozdější** (002–006 jsou M2–M6).
+002–006 jsou M2–M6, **007 je M8** (audit log, opravy, tutoriál; M7 zatím nemá plán). Plán CI (`ci.yml`), původně slíbený
+jako 002, dostane číslo **008 nebo pozdější**; M7 dostane číslo, až se bude plánovat (návrh plánu 007: M7 = 008, CI = 009).

@@ -1,13 +1,15 @@
 # Architektura — Redakční systém (t360)
 
-> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-03 (plány 001–004, M1–M4 — hotovo;
-> plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — implementováno).
+> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-04 (plány 001–004, M1–M4 — hotovo;
+> plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — hotovo;
+> plán 007 M8 audit log, opravy, tutoriál — navrženo).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
 > [ADR-0004](adr/0004-anglicke-nazvy-v-databazi.md) anglické názvy v DB ·
 > [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer ·
-> [ADR-0006](adr/0006-vlastni-llm-klient-curl.md) vlastní LLM klient přes cURL (navrženo).
+> [ADR-0006](adr/0006-vlastni-llm-klient-curl.md) vlastní LLM klient přes cURL ·
+> [ADR-0007](adr/0007-casy-v-databazi-utc-vs-praha.md) časy v DB: UTC vs. Europe/Prague (navrženo).
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -34,10 +36,10 @@ flowchart LR
         CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)<br/>ai:priklad (M6)"]
     end
     subgraph App["App\\Application — use-cases"]
-        UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)"]
+        UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)<br/>AuditLogSearch → AuditLogPage (M8)"]
     end
     subgraph Dom["App\\Domain — entity, VO, rozhraní repozitářů"]
-        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>AiCallRepository + AiCall, TokenUsage (M6)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
+        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>AiCallRepository + AiCall, TokenUsage (M6)<br/>AuditLogRepository::count/search, AuditLogFilter, AuditLogRecord (M8)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
     end
     subgraph Inf["App\\Infrastructure — PDO, migrace, config"]
         R["Pdo*Repository (vč. PdoArticleRepository M4,<br/>PdoArticleAdminRepository, PdoCategory/TagRepository M5,<br/>PdoAiCallRepository M6)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
@@ -101,6 +103,14 @@ M6 (plán 006, implementováno) — AI jde `Admin\AiController` / `ai:priklad` �
 Strukturovaný výstup přes `output_config.format` + validace v PHP (ADR-0006; vynucený nástroj `claude-sonnet-5-5`
 odmítá). Článek jde do promptu v `<clanek>` značkách, výstup modelu se jen zobrazuje přes `e()` a nikam se neukládá;
 výsledek přežije PRG v session (`ExampleResultStash`).
+
+M8 (plán 007, navrženo) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
+bez CSRF) → `AuditLogSearch` (Application: validace `akce`/`od`/`do`, 50 na stránku) → `AuditLogRepository::count` +
+`search` (Domain) ← `PdoAuditLogRepository` (dva dotazy, `LEFT JOIN users`, indexy `created_at` a `(action, created_at)`).
+**Pravidlo časů (ADR-0007):** sloupec, který plní databáze (`DEFAULT CURRENT_TIMESTAMP`), je v UTC — `audit_log.created_at`,
+`users.created_at`, `users.last_login_at`, `migrations.executed_at`; sloupec, který plní aplikace z `Clock`, je v Europe/Prague —
+`articles.*_at`, `ai_calls.created_at` (seed od M8 vyplňuje časy článků explicitně). `ConnectionFactory` připíchne zónu
+spojení na UTC; převod UTC → Praha dělá jen repozitář, který čas čte (dnes `PdoAuditLogRepository`).
 
 ## 2. Běhové prostředí (dev, `compose.yaml`, projekt `t360`)
 Hostitel má jen `docker`, `git`, `bash`, `jq` (+ `make`, `curl` — čeká na schválení). Žádné PHP ani Node.
