@@ -16,7 +16,7 @@ metadata:
 - Číslování plánů: 002 = M2, 003 = M3 (přihlášení), 004 = M4 (veřejná část, zúžená; rubriky/štítky/
   hledání = M4b), 005 = M5 (administrace článků, zúžená; CRUD rubrik/štítků = M5b), 006 = M6 (AI jádro,
   tabulka `ai_calls`, migrace `202610030007`), **007 = M8** (audit log, opravy, tutoriál; M7 přeskočen v pořadí);
-  návrh M7 = 008, CI = 009 (ověř v STAV.md). Migrační heslo v `app` je od M2.
+  **008 = M7 zúžený** (příklady 06–07, bez migrace; 08 = M7b, 09+10 = M7c), CI = 009+ (ověř v STAV.md). Migrační heslo v `app` je od M2.
 - Seed (M4 návrh): `database/seeds/demo_content.php` vrací objekt `Infrastructure\Seed\Seed`, příkaz
   `db:seed` (otázka 3 plánu 004), běží jako `redakce_app`, jen doplňuje podle slugu, nic nemaže.
 - Časy: PHP `Europe/Prague`, MariaDB v UTC → v SQL nepoužívat `NOW()` pro `published_at`, čas přes `Clock`.

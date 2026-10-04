@@ -32,6 +32,9 @@ metadata:
   V AC s curl neočekávat text důvodu u kódů, které tabulka v `Response` nepokrývá.
 - **`.env` v kontejneru je `/dev/null`** → rada „nastav v `.env`“ platí jen pro proměnné, které `compose.yaml` předává
   (`SESSION_COOKIE_SECURE` nepředává; README to do M8 tvrdilo chybně).
+- **Router bere první shodu v pořadí registrace** → specifické trasy (`/admin/ai/06`) registrovat před `{example}`.
+- **`Response` posílá až `public/index.php` po middleware** → streamovaná odpověď (plán 008) běží mimo `ErrorHandlerMiddleware`;
+  nativní session drží zámek → před proudem `Session::release()`. Container cachuje instance (`set` = líná továrna, singleton).
 - **Kolace `utf8mb4_czech_ci` + PAD SPACE**: `WHERE slug = ?` ignoruje velikost písmen a koncové mezery →
   slug z URL validovat regexem před dotazem.
 
