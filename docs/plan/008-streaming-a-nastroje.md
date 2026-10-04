@@ -1,5 +1,5 @@
 # 008 – AI příklady 06 a 07: streaming (asistent psaní) a tool use (Zeptej se redakce)
-Stav: návrh
+Stav: schváleno
 
 - **Milník:** M7, **zúžený** (uživatelský příběh 10 zadání; dohodnuto s člověkem: jen příklady 06 a 07) ·
   **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP, bez kola security review
