@@ -19,6 +19,7 @@
 <a class="skip-link" href="#obsah">Přejít na obsah</a>
 <header class="site-header">
     <a class="site-name" href="/">Redakční systém</a>
+    <p class="site-code">t360-php-agent-rs</p>
 </header>
 <div class="page-body">
 <main id="obsah">

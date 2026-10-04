@@ -477,3 +477,10 @@ mark {
     color: var(--text);
     padding: 0 0.1em;
 }
+
+.site-code {
+    margin: 0;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--muted);
+}
