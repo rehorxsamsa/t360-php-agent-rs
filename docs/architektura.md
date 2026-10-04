@@ -2,14 +2,15 @@
 
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-04 (plány 001–004, M1–M4 — hotovo;
 > plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — hotovo;
-> plán 007 M8 audit log, opravy, tutoriál — implementováno).
+> plán 007 M8 audit log, opravy, tutoriál — implementováno; plán 008 M7 příklady 06–07 — návrh).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
 > [ADR-0004](adr/0004-anglicke-nazvy-v-databazi.md) anglické názvy v DB ·
 > [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer ·
 > [ADR-0006](adr/0006-vlastni-llm-klient-curl.md) vlastní LLM klient přes cURL ·
-> [ADR-0007](adr/0007-casy-v-databazi-utc-vs-praha.md) časy v DB: UTC vs. Europe/Prague (navrženo).
+> [ADR-0007](adr/0007-casy-v-databazi-utc-vs-praha.md) časy v DB: UTC vs. Europe/Prague (navrženo) ·
+> [ADR-0008](adr/0008-streaming-a-nastroje-llm.md) streaming a tool use v LLM klientovi (navrženo).
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -46,9 +47,11 @@ flowchart LR
         MG["Migration\\Migrator<br/>PdoMigrationRepository<br/>database/migrations/*.php<br/>Seed + database/seeds/*.php (M4)"]
     end
     subgraph Ai["App\\Ai (M6, plán 006 + ADR-0006)"]
-        EX["Examples: ExampleRunner, ExampleRegistry,<br/>Example01…05, StructuredCall, PromptLibrary<br/>AiUsageReport, AiConfig, Cost\\ModelCatalog"]
-        L["LlmClient (port) = MeteredLlmClient<br/>(denní limit + log ai_calls)<br/>→ FakeLlmClient | AnthropicClient<br/>→ HttpTransport (CurlHttpTransport)"]
+        EX["Examples: ExampleRunner, ExampleRegistry,<br/>Example01…05, StructuredCall, PromptLibrary<br/>AiUsageReport, AiConfig, Cost\\ModelCatalog<br/>M7 (plán 008): Example06WritingAssistant (proud),<br/>Example07AskNewsroom (tool use smyčka)"]
+        L["LlmClient + StreamingLlmClient (porty, ADR-0008)<br/>= MeteredLlmClient (denní limit + log ai_calls)<br/>→ FakeLlmClient | AnthropicClient (SseParser)<br/>→ HttpTransport post / stream (CurlHttpTransport)"]
+        TL["Tools (M7): hledej_clanky, nacti_clanek<br/>jen čtení publikovaných"]
         EX --> L
+        EX --> TL
     end
     API["Claude Messages API<br/>api.anthropic.com"]
     DI -.->|sestavuje| K
@@ -63,6 +66,7 @@ flowchart LR
     CA -->|"ai:priklad"| EX
     EX --> I
     L --> I
+    TL -->|"ArticleRepository (veřejné čtení)"| I
     L -.->|"HTTPS, jen s AI_PROVIDER=anthropic"| API
 ```
 
@@ -103,6 +107,15 @@ M6 (plán 006, implementováno) — AI jde `Admin\AiController` / `ai:priklad` �
 Strukturovaný výstup přes `output_config.format` + validace v PHP (ADR-0006; vynucený nástroj `claude-sonnet-5-5`
 odmítá). Článek jde do promptu v `<clanek>` značkách, výstup modelu se jen zobrazuje přes `e()` a nikam se neukládá;
 výsledek přežije PRG v session (`ExampleResultStash`).
+
+M7 (plán 008, **návrh**, ADR-0008) — příklad 06 streamuje: `Admin\WritingAssistantController` (POST `/admin/ai/06/proud`
+s CSRF) uvolní zámek session a vrátí `Response::stream(producent)`; producent běží až v `Response::send()` (mimo middleware,
+chyby mění na SSE `error`) a přes `Example06WritingAssistant` → `StreamingLlmClient` (= `MeteredLlmClient`) → `AnthropicClient`
+(`HttpTransport::stream`, `SseParser`) nebo `FakeLlmClient` posílá delty jako SSE (`X-Accel-Buffering: no`); prohlížeč je čte
+přes `fetch` (`public/assets/ai-stream.js`), přerušení = `AbortController` → `connection_aborted()` → `stopReason 'aborted'`.
+Příklad 07 (PRG jako 01–05) volá `LlmClient::complete()` v smyčce ≤ 5 kroků s nástroji `hledej_clanky`/`nacti_clanek`
+(`App\Ai\Tools`, jen `ArticleRepository` = publikované); surové bloky odpovědi (vč. `thinking`) se vracejí nezměněné.
+Schéma DB se nemění (krok = řádek `ai_calls`).
 
 M8 (plán 007, implementováno) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
 bez CSRF) → `AuditLogSearch` (Application: validace `akce`/`od`/`do`, 50 na stránku) → `AuditLogRepository::count` +

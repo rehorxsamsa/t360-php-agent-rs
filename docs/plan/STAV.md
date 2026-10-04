@@ -61,8 +61,19 @@ se zmírňují ve prospěch rychlého spuštění a ukázky práce agentů; nemu
 - **Testovací účty v dev DB:** `admin@example.cz`, `qa-m3@example.test`, `t2b-test@example.cz` (jen lokální výuková data).
 
 ## Číslování plánů
-002–006 jsou M2–M6, **007 je M8** (audit log, opravy, tutoriál; M7 zatím nemá plán). Plán CI (`ci.yml`), původně slíbený
-jako 002, dostane číslo **008 nebo pozdější**; M7 dostane číslo, až se bude plánovat (návrh plánu 007: M7 = 008, CI = 009).
+002–006 jsou M2–M6, **007 je M8** (audit log, opravy, tutoriál), **008 je M7 zúžený** (AI příklady 06 a 07, streaming a tool use).
+Plán CI (`ci.yml`), původně slíbený jako 002, dostane číslo **009 nebo pozdější**; M7b a M7c dostanou další volná čísla.
+
+## Backlog M7 (z plánu 008, výukový režim)
+- **M7b – příklad 08 RAG:** embeddingy článků (`EmbeddingClient`, `OllamaClient`/Voyage), MariaDB `VECTOR` + index (migrace
+  `article_embeddings`), profil `ai-local` s Ollamou v compose, odpověď s citacemi, proměnné `EMBED_*`.
+- **M7c – příklad 09 AI redaktor + 10 MCP server:** 09 = osnova → koncept → sebekontrola, uložení jen jako koncept po potvrzení
+  adminem (první zápisová akce AI), vyčlenit `AgentLoop` z 07; 10 = MCP server přes STDIO (`hledej_clanky`, `statistiky`,
+  prompt `navrhni_clanek`) — **nová composer závislost (PHP SDK) = brána člověka**, případně samostatný M7d.
+- **Drobnosti po 06/07:** asistent psaní ve formuláři článku; streaming kroků agenta 07; přeposílání `ping` jako SSE komentář;
+  přesná usage při chybě uprostřed proudu; `strict: true` u nástrojů; poslední krok bez nástrojů; seskupení kroků v `ai_calls`
+  (`run_id`); fulltext místo `LIKE` (s M4b); obnovení proudu po výpadku.
+- **Haiku 4.5** (`AI_MODEL_LEVNY`, příklady 03 a 05) má vyřazení „nejdříve 15. 10. 2026“ — sledovat a včas změnit model i katalog.
 
 ## Úkoly pro M9 (z plánu 007)
 - `SESSION_COOKIE_SECURE`: kontejner `app` `.env` nevidí a `compose.yaml` proměnnou nepředává; pro produkci ji předat v
