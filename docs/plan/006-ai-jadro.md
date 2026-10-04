@@ -1,5 +1,5 @@
 # 006 – AI jádro: klient Claude API, náklady, limity a AI příklady 01–05
-Stav: návrh
+Stav: hotovo
 
 - **Milník:** M6 (uživatelský příběh 10 zadání, zúžený na příklady 01–05; 06–10 = **M7**) ·
   **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP, bez kola security review

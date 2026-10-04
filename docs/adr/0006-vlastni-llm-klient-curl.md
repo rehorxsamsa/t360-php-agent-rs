@@ -1,5 +1,5 @@
 # ADR-0006: Vlastní klient Claude Messages API přes cURL, strukturovaný výstup přes `output_config.format`
-- **Stav:** navrženo (schvaluje člověk na bráně 1 plánu 006)
+- **Stav:** přijato (schváleno člověkem na bráně 1 plánu 006)
 - **Datum:** 2026-10-03
 - **Autor:** agent architekt
 - **Souvisí:** [plán 006](../plan/006-ai-jadro.md), [ADR-0003](0003-anglicke-identifikatory.md), skilly
