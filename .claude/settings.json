@@ -67,7 +67,7 @@
       "Bash(git * --pathspec*)",
       "Bash(git restore * --wor*)",
       "Bash(git restore * --so*)",
-      "Bash(curl * file:*)",
+      "Bash(curl * file*)",
       "Bash(sudo *)",
       "Bash(php *)",
       "Bash(composer *)",
