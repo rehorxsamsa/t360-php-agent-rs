@@ -1,5 +1,5 @@
 # 009 – AI příklad 08: Sémantické vyhledávání (RAG) s embeddingy v MariaDB VECTOR a citacemi
-Stav: schváleno
+Stav: hotovo
 
 - **Milník:** M7b (uživatelský příběh 10 zadání; backlog M7b ze `STAV.md`) · **Režim:** výukový (viz `docs/plan/STAV.md`) —
   MVP, bez kola security review
