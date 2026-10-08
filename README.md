@@ -128,6 +128,8 @@ služby zdravé. Další cíle vypíše `make help`.
 | Audit log (jen admin, filtr podle akce a data) | <http://localhost:8080/admin/audit> |
 | AI nástroje (přehled, spotřeba tokenů, poslední volání) | <http://localhost:8080/admin/ai> |
 | AI příklad 01–05 (např. perex) | <http://localhost:8080/admin/ai/01> |
+| AI příklad 06, asistent psaní se streamováním (admin) | <http://localhost:8080/admin/ai/06> |
+| AI příklad 07, zeptej se redakce (admin) | <http://localhost:8080/admin/ai/07> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
@@ -155,7 +157,7 @@ Produkční `compose.prod.yaml` (M9) za HTTPS musí dát `SESSION_COOKIE_SECURE:
 Pravidlo, proč a kde se čas převádí, je v [ADR-0007](docs/adr/0007-casy-v-databazi-utc-vs-praha.md).
 
 ## AI příklady (M6)
-Pět AI příkladů (perex, SEO, štítky a rubrika, kontrola před publikací, překlad) běží **bez API klíče**
+Prvních pět AI příkladů (perex, SEO, štítky a rubrika, kontrola před publikací, překlad) běží **bez API klíče**
 přes falešný klient (`AI_PROVIDER=falesny`, nic se neúčtuje, cena je jen orientační). Spuštění z konzole
 (po `make migrate`):
 
@@ -179,6 +181,34 @@ se přihlas jako admin a otevři `/admin/ai`. Proměnné v `.env` (výchozí hod
 Skutečné API zapneš tak, že do `.env` doplníš `AI_PROVIDER=anthropic` a `ANTHROPIC_API_KEY=…` a spustíš `make up`.
 Kvůli ceně se po každém volání zapisují do tabulky `ai_calls` jen metadata (tokeny, cena, trvání), nikdy texty.
 Výklad je v kapitole „AI jádro“ v [`docs/tutorial.html`](docs/tutorial.html).
+
+## AI příklady 06 a 07: streaming a nástroje (M7)
+Příklad 06 (asistent psaní) vypisuje odpověď modelu **živě** přes Server-Sent Events a jde přerušit. Příklad 07
+(„Zeptej se redakce“) nechá model samotný hledat a číst publikované články dvěma **čtecími** nástroji.
+Oba běží bez API klíče přes falešný klient (spuštění po `make migrate`, příklad 07 chce `make seed`):
+
+```bash
+docker compose exec -T app php bin/konzole ai:priklad 06 --akce=zkrat
+docker compose exec -T app php bin/konzole ai:priklad 06 --akce=zjednodus --text="Vlastní odstavec."
+docker compose exec -T app php bin/konzole ai:priklad 07
+docker compose exec -T app php bin/konzole ai:priklad 07 --otazka="Co redakce píše o Dockeru?"
+```
+
+Volby: `--akce=pokracuj|zkrat|zjednodus` a `--text=…` (06, text nejvýše 5 000 znaků), `--otazka=…` (07, 3 až 500 znaků).
+V prohlížeči se přihlas jako admin a otevři `/admin/ai/06` (živý výstup s tlačítkem „Přerušit“, vyžaduje JavaScript)
+nebo `/admin/ai/07` (odpověď s kroky agenta a zdroji).
+
+Co je dobré vědět:
+
+- Proud jde do prohlížeče přes `fetch` s `POST` (ne `EventSource`, ten umí jen `GET`). Před streamem se uvolní zámek session
+  a vypne bufferování (PHP i nginx).
+- Přerušené volání se v `ai_calls` zapíše se stavem „Přerušeno“ a výstupní tokeny se jen odhadují (znaky / 4).
+- Příklad 07 je omezený: 5 volání modelu, 3 nástroje na krok, 60 s. Nástroje jen čtou publikované články; text článků je
+  nedůvěryhodný (nepřímá prompt injection), proto nic nezapisují.
+- Rate limit těchto endpointů zatím chybí (backlog).
+
+Výklad je v kapitole „Streaming a nástroje“ v [`docs/tutorial.html`](docs/tutorial.html#m7), rozhodnutí v
+[ADR-0008](docs/adr/0008-streaming-a-nastroje-llm.md), podklady v `docs/ai-priklady/06.md` a `07.md`.
 
 Testy: `make test` (nebo `make qa`). Integrační testy schématu mažou a znovu vytvářejí tabulky
 v databázi `redakce_test`, proto dvě sady testů nesmí běžet paralelně nad `redakce_test`.
