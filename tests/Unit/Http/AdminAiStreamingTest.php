@@ -252,10 +252,11 @@ final class AdminAiStreamingTest extends AdminAiM7TestCase
         self::assertIsArray($last['data']);
         $keys = array_keys($last['data']);
         sort($keys);
-        self::assertSame(['costUsd', 'inputTokens', 'model', 'outputTokens', 'provider', 'stopReason'], $keys);
+        self::assertSame(['costUsd', 'inputTokens', 'model', 'outputTokens', 'provider', 'providerLabel', 'stopReason'], $keys);
         self::assertSame('end_turn', $last['data']['stopReason']);
         self::assertSame('claude-sonnet-5-5', $last['data']['model']);
         self::assertSame('fake', $last['data']['provider']);
+        self::assertSame('falešný klient', $last['data']['providerLabel']);
         self::assertGreaterThan(0, $last['data']['inputTokens']);
         self::assertGreaterThan(0, $last['data']['outputTokens']);
         self::assertIsNumeric($last['data']['costUsd']);

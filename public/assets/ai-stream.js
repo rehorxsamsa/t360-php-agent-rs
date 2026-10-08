@@ -3,7 +3,7 @@
  *
  * Formulář se odešle přes fetch (POST + FormData včetně _csrf), ne přes EventSource – ten umí jen GET
  * a placené volání nikdy nesmí jít přes GET. Odpověď je proud Server-Sent Events:
- *   ": start" · "event: delta" + data {"text"} (0..n×) · "event: done" + data {stopReason, model, provider,
+ *   ": start" · "event: delta" + data {"text"} (0..n×) · "event: done" + data {stopReason, model, provider, providerLabel,
  *   inputTokens, outputTokens, costUsd} · nebo "event: error" + data {"message"}.
  * Výstup modelu je nedůvěryhodný (LLM05): do stránky jde výhradně jako text (textContent / textový uzel),
  * nikdy jako HTML. „Přerušit“ = AbortController – server pozná odpojení a volání zaloguje jako přerušené.
@@ -69,7 +69,7 @@
             return;
         }
         meta.textContent = 'Model ' + String(data.model) +
-            ' · poskytovatel ' + String(data.provider) +
+            ' · poskytovatel ' + String(data.providerLabel || data.provider) +
             ' · tokeny vstup ' + formatNumber(data.inputTokens, 0) +
             ' / výstup ' + formatNumber(data.outputTokens, 0) +
             ' · cena ' + formatNumber(data.costUsd, 6) + ' USD';

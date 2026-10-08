@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controller\Admin;
 
+use App\Ai\AiProvider;
 use App\Ai\AiBudgetExceeded;
 use App\Ai\Examples\Example06WritingAssistant;
 use App\Ai\Examples\InvalidExampleInput;
@@ -120,6 +121,7 @@ final readonly class WritingAssistantController
             'stopReason' => $response->stopReason,
             'model' => $response->model,
             'provider' => $response->provider,
+            'providerLabel' => AiProvider::fromLogName($response->provider)?->shortLabel() ?? $response->provider,
             'inputTokens' => $response->usage->input,
             'outputTokens' => $response->usage->output,
             'costUsd' => $response->costUsd ?? 0.0,
