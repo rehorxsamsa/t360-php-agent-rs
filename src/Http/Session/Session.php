@@ -24,4 +24,10 @@ interface Session
 
     /** Smaže všechna data a vydá nové ID (odhlášení). */
     public function invalidate(): void;
+
+    /**
+     * Uloží data a uvolní zámek session (před dlouhou streamovanou odpovědí – jinak by čekaly
+     * všechny další požadavky téhož uživatele). Po uvolnění se session v požadavku už nečte ani nezapisuje.
+     */
+    public function release(): void;
 }

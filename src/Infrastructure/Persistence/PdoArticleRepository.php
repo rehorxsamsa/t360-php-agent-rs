@@ -14,6 +14,12 @@ final readonly class PdoArticleRepository implements ArticleRepository
     /** Podmínka „veřejně čitelný“ – jediné místo, kde se rozhoduje, co je publikované. */
     private const string PUBLISHED_CONDITION = 'a.status = :status AND a.published_at IS NOT NULL AND a.published_at <= :now';
 
+    /**
+     * Znak pro escapování v LIKE. Výslovně (ne výchozí `\`), aby hledání fungovalo stejně
+     * i v režimu `NO_BACKSLASH_ESCAPES`.
+     */
+    private const string LIKE_ESCAPE = '!';
+
     public function __construct(private \PDO $pdo) {}
 
     public function latestPublished(\DateTimeImmutable $now, int $limit, int $offset): array
@@ -88,6 +94,55 @@ final readonly class PdoArticleRepository implements ArticleRepository
             $summary->categoryName,
             $row['body'],
             $this->tagNames((int) $row['id']),
+        );
+    }
+
+    public function searchPublished(string $query, \DateTimeImmutable $now, int $limit): array
+    {
+        $query = trim($query);
+        if ($query === '' || $limit <= 0) {
+            return [];
+        }
+
+        // Tři různé názvy parametrů: se skutečnými prepared statements (EMULATE_PREPARES=false)
+        // nejde jeden pojmenovaný parametr v dotazu použít víckrát.
+        $like = ' LIKE :%s ESCAPE \'' . self::LIKE_ESCAPE . '\'';
+        $statement = $this->pdo->prepare(
+            'SELECT a.title, a.slug, a.excerpt, a.published_at, c.name AS category_name'
+            . ' FROM articles a JOIN categories c ON c.id = a.category_id'
+            . ' WHERE ' . self::PUBLISHED_CONDITION
+            . ' AND (a.title' . sprintf($like, 'q_title')
+            . ' OR a.excerpt' . sprintf($like, 'q_excerpt')
+            . ' OR a.body' . sprintf($like, 'q_body') . ')'
+            . ' ORDER BY a.published_at DESC, a.id DESC'
+            . ' LIMIT :limit',
+        );
+        $pattern = '%' . $this->escapeLike($query) . '%';
+        $statement->bindValue('status', ArticleStatus::Published->value);
+        $statement->bindValue('now', $this->formatNow($now));
+        $statement->bindValue('q_title', $pattern);
+        $statement->bindValue('q_excerpt', $pattern);
+        $statement->bindValue('q_body', $pattern);
+        $statement->bindValue('limit', $limit, \PDO::PARAM_INT);
+        $statement->execute();
+
+        $summaries = [];
+        foreach ($statement->fetchAll() as $row) {
+            $summaries[] = $this->hydrateSummary($row);
+        }
+
+        return $summaries;
+    }
+
+    /** Zástupné znaky LIKE (`%`, `_`) i samotný escapovací znak se hledají doslova. */
+    private function escapeLike(string $value): string
+    {
+        $escape = self::LIKE_ESCAPE;
+
+        return str_replace(
+            [$escape, '%', '_'],
+            [$escape . $escape, $escape . '%', $escape . '_'],
+            $value,
         );
     }
 

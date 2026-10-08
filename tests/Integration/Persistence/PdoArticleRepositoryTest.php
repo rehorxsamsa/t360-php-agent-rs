@@ -148,4 +148,118 @@ final class PdoArticleRepositoryTest extends TestCase
         self::assertGreaterThanOrEqual(1, $selects);
         self::assertLessThanOrEqual(2, $selects);
     }
+
+    /** Plán 008, AC 23: přímý zápis do testovací DB (připraví data, která seed nemá). */
+    private function updateArticle(string $slug, string $column, string $value): void
+    {
+        if (!in_array($column, ['title', 'excerpt', 'body', 'published_at'], true)) {
+            throw new \InvalidArgumentException('Nepovolený sloupec ' . $column);
+        }
+        $statement = $this->pdo->prepare('UPDATE articles SET ' . $column . ' = :value WHERE slug = :slug');
+        $statement->execute(['value' => $value, 'slug' => $slug]);
+        self::assertSame(1, $statement->rowCount(), $slug);
+    }
+
+    /** Koncept, archivní a naplánovaný článek obsahují „Docker“ (titulek, perex i text). */
+    private function hiddenArticlesMentionDocker(): void
+    {
+        $this->updateArticle('druhy-koncept', 'body', 'Koncept článku o tom, jak redaktoři využijí jazykové modely a Docker.');
+        $this->updateArticle('archivni-clanek', 'title', 'Archivní zpráva o Dockeru');
+        $this->updateArticle('planovany-clanek', 'excerpt', 'Naplánovaný článek o Dockeru.');
+        $this->updateArticle('rozepsany-koncept', 'body', 'docker docker docker');
+    }
+
+    /**
+     * @param list<\App\Domain\Article\ArticleSummary> $summaries
+     *
+     * @return list<string>
+     */
+    private static function slugs(array $summaries): array
+    {
+        return array_map(static fn($summary): string => $summary->slug, $summaries);
+    }
+
+    public function test_search_returns_only_published_articles_up_to_now(): void
+    {
+        $this->hiddenArticlesMentionDocker();
+
+        $found = $this->repository->searchPublished('docker', $this->now, 5);
+
+        self::assertSame(['docker-pro-vyvojare'], self::slugs($found));
+        self::assertSame('Docker pro vývojáře: proč na něm záleží', $found[0]->title);
+        self::assertSame('Technologie', $found[0]->categoryName);
+        self::assertSame('2026-09-02 08:00', $found[0]->publishedAt->format('Y-m-d H:i'));
+        self::assertSame('Europe/Prague', $found[0]->publishedAt->getTimezone()->getName());
+        self::assertNotSame('', $found[0]->excerpt);
+    }
+
+    public function test_search_finds_scheduled_article_once_its_time_has_come(): void
+    {
+        $this->hiddenArticlesMentionDocker();
+        $later = new \DateTimeImmutable('2099-01-02 00:00:00', new \DateTimeZone('Europe/Prague'));
+
+        self::assertSame(
+            ['planovany-clanek', 'docker-pro-vyvojare'],
+            self::slugs($this->repository->searchPublished('docker', $later, 5)),
+        );
+    }
+
+    public function test_search_ignores_letter_case_and_trims_query(): void
+    {
+        self::assertSame(['docker-pro-vyvojare'], self::slugs($this->repository->searchPublished('  DOCKER ', $this->now, 5)));
+    }
+
+    public function test_search_looks_into_title_excerpt_and_body(): void
+    {
+        self::assertSame(['docker-pro-vyvojare'], self::slugs($this->repository->searchPublished('pro vývojáře', $this->now, 5)), 'titulek');
+        self::assertSame(['docker-pro-vyvojare'], self::slugs($this->repository->searchPublished('denní postup', $this->now, 5)), 'perex');
+        self::assertSame(['docker-pro-vyvojare'], self::slugs($this->repository->searchPublished('naklonujete repozitář', $this->now, 5)), 'text');
+    }
+
+    public function test_search_orders_newest_first_and_respects_limit(): void
+    {
+        $expected = self::slugs($this->repository->latestPublished($this->now, 3, 0));
+
+        // Písmeno „a“ je v každém publikovaném článku, takže výsledek musí být shodný s výpisem nejnovějších.
+        self::assertSame($expected, self::slugs($this->repository->searchPublished('a', $this->now, 3)));
+        self::assertCount(1, $this->repository->searchPublished('a', $this->now, 1));
+    }
+
+    public function test_search_with_same_publication_time_puts_higher_id_first(): void
+    {
+        $this->updateArticle('nova-studie-o-spanku', 'published_at', '2026-09-02 08:00:00');
+        $this->updateArticle('nova-studie-o-spanku', 'body', 'Spánek a Docker nesouvisí.');
+        $ids = [];
+        foreach (TestDatabase::rows($this->pdo, "SELECT slug, id FROM articles WHERE slug IN ('docker-pro-vyvojare', 'nova-studie-o-spanku')") as $row) {
+            $ids[(string) $row['slug']] = (int) $row['id'];
+        }
+        arsort($ids);
+
+        self::assertSame(array_keys($ids), self::slugs($this->repository->searchPublished('docker', $this->now, 5)));
+    }
+
+    public function test_like_wildcards_and_escape_character_are_searched_literally(): void
+    {
+        $this->updateArticle('prvni-clanek', 'excerpt', 'Kód x%y v perexu.');
+        $this->updateArticle('nova-studie-o-spanku', 'excerpt', 'Kód x_y v perexu.');
+        $this->updateArticle('pristupnost-webu-v-praxi', 'excerpt', 'Kód z!k v perexu.');
+
+        self::assertSame(['prvni-clanek'], self::slugs($this->repository->searchPublished('x%y', $this->now, 5)));
+        self::assertSame(['nova-studie-o-spanku'], self::slugs($this->repository->searchPublished('x_y', $this->now, 5)));
+        self::assertSame(['pristupnost-webu-v-praxi'], self::slugs($this->repository->searchPublished('z!k', $this->now, 5)));
+        self::assertSame([], $this->repository->searchPublished('x\\y', $this->now, 5));
+    }
+
+    public function test_search_uses_single_select(): void
+    {
+        self::assertSame(1, $this->countSelects(fn() => $this->repository->searchPublished('docker', $this->now, 5)));
+    }
+
+    public function test_empty_query_returns_nothing_without_query(): void
+    {
+        self::assertSame(0, $this->countSelects(function (): void {
+            self::assertSame([], $this->repository->searchPublished('', $this->now, 5));
+            self::assertSame([], $this->repository->searchPublished("  \n ", $this->now, 5));
+        }));
+    }
 }

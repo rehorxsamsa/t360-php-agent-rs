@@ -23,6 +23,12 @@ final readonly class Output
         fwrite($this->stdout, $text . PHP_EOL);
     }
 
+    /** Zápis bez konce řádku (průběžný výpis proudu z LLM). */
+    public function write(string $text): void
+    {
+        fwrite($this->stdout, $text);
+    }
+
     public function error(string $text): void
     {
         fwrite($this->stderr, $text . PHP_EOL);

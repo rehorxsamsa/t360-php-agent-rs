@@ -16,4 +16,12 @@ interface ArticleRepository
     public function countPublished(\DateTimeImmutable $now): int;
 
     public function findPublishedBySlug(string $slug, \DateTimeImmutable $now): ?ArticleDetail;
+
+    /**
+     * Hledání podřetězce v titulku, perexu a textu (bez ohledu na velikost písmen; `%` a `_`
+     * se hledají doslova). Prázdný dotaz (po `trim`) vrací `[]`.
+     *
+     * @return list<ArticleSummary> nejnovější první, nejvýše `$limit`
+     */
+    public function searchPublished(string $query, \DateTimeImmutable $now, int $limit): array;
 }

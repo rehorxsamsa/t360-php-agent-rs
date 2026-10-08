@@ -12,6 +12,8 @@ use App\Http\Session\Session;
  */
 final class NativeSession implements Session
 {
+    private bool $released = false;
+
     public function __construct(
         private readonly bool $secureCookie,
         private readonly string $name = 'redakce_session',
@@ -58,8 +60,26 @@ final class NativeSession implements Session
         session_regenerate_id(true);
     }
 
+    /** Session, která v tomto požadavku nezačala, se kvůli uvolnění zakládat nemusí. */
+    public function release(): void
+    {
+        $this->released = true;
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return;
+        }
+
+        if (!session_write_close()) {
+            throw new \RuntimeException('Nepodařilo se uložit session.');
+        }
+    }
+
     private function start(): void
     {
+        if ($this->released) {
+            // Znovuotevření by uprostřed proudu (hlavičky už odešly) jen vyvolalo varování a ztrátu dat.
+            throw new \LogicException('Session už byla v tomto požadavku uvolněna.');
+        }
+
         if (session_status() === PHP_SESSION_ACTIVE) {
             return;
         }

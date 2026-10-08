@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http;
 
+use App\Http\Stream\PhpStreamOutput;
+use App\Http\Stream\StreamOutput;
+
 final readonly class Response
 {
     /**
@@ -26,12 +29,15 @@ final readonly class Response
     ];
 
     /**
-     * @param array<string, string> $headers název hlavičky => hodnota
+     * @param array<string, string>               $headers  název hlavičky => hodnota
+     * @param (\Closure(StreamOutput): void)|null $producer streamovaná odpověď: spustí se až v `send()`,
+     *                                                      tedy po průchodu middleware; `$body` se pak neposílá
      */
     public function __construct(
         public int $status,
         public array $headers,
         public string $body,
+        public ?\Closure $producer = null,
     ) {}
 
     /**
@@ -84,6 +90,29 @@ final readonly class Response
     }
 
     /**
+     * Streamovaná odpověď (Server-Sent Events). Producent běží mimo middleware, takže výjimky
+     * musí ošetřit sám (převést na SSE událost `error`). `X-Accel-Buffering: no` vypne bufferování
+     * v nginx jen pro tuto odpověď.
+     *
+     * @param \Closure(StreamOutput): void $producer
+     * @param array<string, string>        $extraHeaders
+     */
+    public static function stream(\Closure $producer, array $extraHeaders = []): self
+    {
+        return new self(
+            200,
+            [
+                'Content-Type' => 'text/event-stream; charset=utf-8',
+                'Cache-Control' => 'no-store',
+                'X-Accel-Buffering' => 'no',
+                'X-Content-Type-Options' => 'nosniff',
+            ] + $extraHeaders,
+            '',
+            $producer,
+        );
+    }
+
+    /**
      * Přesměrování (PRG): jen na interní cestu začínající jedním `/`, jinak by šlo o open redirect.
      *
      * @throws \InvalidArgumentException cíl není interní cesta
@@ -102,7 +131,7 @@ final readonly class Response
      */
     public function withHeaders(array $headers): self
     {
-        return new self($this->status, array_merge($this->headers, $headers), $this->body);
+        return new self($this->status, array_merge($this->headers, $headers), $this->body, $this->producer);
     }
 
     /** Text stavového řádku (`422` → `Unprocessable Content`); neznámý kód vrací ''. */
@@ -123,6 +152,23 @@ final readonly class Response
         foreach ($this->headers as $name => $value) {
             header($name . ': ' . $value);
         }
-        echo $this->body;
+
+        if ($this->producer === null) {
+            echo $this->body;
+
+            return;
+        }
+
+        // Proud: nic nesmí zůstat v PHP bufferu (jinak by klient dostal vše naráz) a skript
+        // musí doběhnout i po odpojení klienta, aby se volání LLM zalogovalo jako přerušené.
+        while (ob_get_level() > 0) {
+            if (!ob_end_flush()) {
+                break;
+            }
+        }
+        ignore_user_abort(true);
+        flush();
+
+        ($this->producer)(new PhpStreamOutput());
     }
 }
