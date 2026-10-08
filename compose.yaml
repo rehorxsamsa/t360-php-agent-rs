@@ -31,6 +31,9 @@ services:
       AI_MODEL: ${AI_MODEL:-claude-sonnet-5-5}
       AI_MODEL_LEVNY: ${AI_MODEL_LEVNY:-claude-haiku-4-5-20251001}
       AI_DENNI_LIMIT_TOKENU: ${AI_DENNI_LIMIT_TOKENU:-200000}
+      EMBED_PROVIDER: ${EMBED_PROVIDER:-falesny}
+      EMBED_MODEL: ${EMBED_MODEL:-embeddinggemma}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       DB_HOST: db
       DB_PORT: "3306"
       DB_NAME: ${DB_NAME:-redakce}
@@ -197,6 +200,26 @@ services:
       ALLOW_DELETE_OPERATION: "false"
       ALLOW_DDL_OPERATION: "false"
 
+  # ---- Profil ai-local: lokální embeddingy (plán 009). Spouští se jen `make ai-local`. ----
+  # Bez `ports` (dostupná jen z kontejnerů ve stejné síti). Uvnitř běží jako root (kontrakt obrazu),
+  # proto cap_drop ALL + no-new-privileges; síť default je potřeba jen pro `ollama pull`.
+  ollama:
+    <<: *hardening
+    profiles: [ai-local]
+    image: ollama/ollama:0.40.1
+    container_name: ollama-t360
+    volumes:
+      - ollama_models:/root/.ollama
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
 # default: app/web/db/adminer; mcp_* jsou interní (bez výstupu ven, bez přístupu k ostatním službám).
 networks:
   default:
@@ -208,3 +231,4 @@ networks:
 volumes:
   db_data:
   composer_cache:
+  ollama_models:

@@ -27,7 +27,7 @@ empty :=
 space := $(empty) $(empty)
 ARGS_REST := $(subst $(space),,$(call strip_chars,$(SAFE_ARGS),$(ALLOWED_CHARS)))
 
-.PHONY: help up down sh composer check test qa fix migrate seed logs ps mcp test-hooks
+.PHONY: help up down ai-local index sh composer check test qa fix migrate seed logs ps mcp test-hooks
 
 help: ## Seznam cílů
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -43,7 +43,14 @@ up: .env ## Sestaví a spustí prostředí, nainstaluje závislosti
 	$(COMPOSE) up -d --build --wait
 
 down: ## Zastaví kontejnery (data v DB zůstávají)
-	$(COMPOSE) down
+	$(COMPOSE) --profile ai-local down
+
+ai-local: ## Spustí Ollamu (profil ai-local) a stáhne model embeddinggemma (~3,8 GB obraz + 622 MB model)
+	$(COMPOSE) --profile ai-local up -d --wait ollama
+	$(COMPOSE) --profile ai-local exec -T ollama ollama pull embeddinggemma
+
+index: ## Zaindexuje publikované články pro sémantické vyhledávání (ai:indexuj)
+	$(COMPOSE) exec -T app php bin/konzole ai:indexuj
 
 sh: ## Shell v kontejneru app
 	$(COMPOSE) exec app bash
