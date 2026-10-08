@@ -7,11 +7,14 @@ namespace App\Tests\Unit\Support;
 use App\Ai\AiConfig;
 use App\Ai\Client\FakeLlmClient;
 use App\Ai\Client\HttpTransport;
+use App\Ai\Embedding\EmbeddingClient;
+use App\Ai\Embedding\FakeEmbeddingClient;
 use App\Ai\LlmClient;
 use App\Ai\StreamingLlmClient;
 use App\Container\Container;
 use App\Domain\Ai\AiCallRepository;
 use App\Domain\Article\ArticleAdminRepository;
+use App\Domain\Article\ArticleEmbeddingRepository;
 use App\Domain\Article\ArticleRepository;
 use App\Domain\Audit\AuditLogRepository;
 use App\Domain\Category\CategoryRepository;
@@ -36,11 +39,13 @@ final class TestContainer
         ?LlmClient $llmClient = null,
         ?AiConfig $aiConfig = null,
         ?ScriptedHttpTransport $httpTransport = null,
+        ?ArticleEmbeddingRepository $embeddings = null,
+        ?EmbeddingClient $embeddingClient = null,
     ): Container {
         /** @var Container $container */
         $container = require __DIR__ . '/../../../config/container.php';
         self::replaceArticleDependencies($container, $articles, $clock, $adminArticles, $categories, $tags);
-        self::replaceAiDependencies($container, $aiCalls, $llmClient, $aiConfig, $httpTransport);
+        self::replaceAiDependencies($container, $aiCalls, $llmClient, $aiConfig, $httpTransport, $embeddings, $embeddingClient);
         $container->set(Session::class, static fn(): Session => $session);
         $container->set(UserRepository::class, static fn(): UserRepository => $users);
         $container->set(AuditLogRepository::class, static fn(): AuditLogRepository => $audit);
@@ -63,11 +68,13 @@ final class TestContainer
         ?LlmClient $llmClient = null,
         ?AiConfig $aiConfig = null,
         ?ScriptedHttpTransport $httpTransport = null,
+        ?ArticleEmbeddingRepository $embeddings = null,
+        ?EmbeddingClient $embeddingClient = null,
     ): Container {
         /** @var Container $container */
         $container = require __DIR__ . '/../../../config/container.php';
         self::replaceArticleDependencies($container, $articles, $clock, $adminArticles, $categories, $tags);
-        self::replaceAiDependencies($container, $aiCalls, $llmClient, $aiConfig, $httpTransport);
+        self::replaceAiDependencies($container, $aiCalls, $llmClient, $aiConfig, $httpTransport, $embeddings, $embeddingClient);
         $container->set(UserRepository::class, static fn(): UserRepository => $users);
         $container->set(AuditLogRepository::class, static fn(): AuditLogRepository => $audit);
 
@@ -116,6 +123,9 @@ final class TestContainer
      *
      * Plán 008: `FakeLlmClient::class` se vždy nahradí instancí bez zpoždění mezi deltami (dev má 60 ms);
      * předaný `StreamingLlmClient` se zaregistruje pod `LlmClient` i `StreamingLlmClient`.
+     *
+     * Plán 009: `ArticleEmbeddingRepository` se vždy nahradí (výchozí prázdný InMemory…), `EmbeddingClient`
+     * výchozím FakeEmbeddingClient (nikdy Ollama, i kdyby prostředí říkalo jinak).
      */
     public static function replaceAiDependencies(
         Container $container,
@@ -123,6 +133,8 @@ final class TestContainer
         ?LlmClient $llmClient = null,
         ?AiConfig $aiConfig = null,
         ?ScriptedHttpTransport $httpTransport = null,
+        ?ArticleEmbeddingRepository $embeddings = null,
+        ?EmbeddingClient $embeddingClient = null,
     ): void {
         $container->set(
             AiCallRepository::class,
@@ -143,5 +155,14 @@ final class TestContainer
         if ($llmClient instanceof StreamingLlmClient) {
             $container->set(StreamingLlmClient::class, static fn(): StreamingLlmClient => $llmClient);
         }
+        // Plán 009, §6: vektory článků v paměti (jinak by GET /admin/ai/08 sáhl do DB) a embeddingy bez sítě.
+        $container->set(
+            ArticleEmbeddingRepository::class,
+            static fn(): ArticleEmbeddingRepository => $embeddings ?? new InMemoryArticleEmbeddingRepository(),
+        );
+        $container->set(
+            EmbeddingClient::class,
+            static fn(): EmbeddingClient => $embeddingClient ?? new FakeEmbeddingClient(),
+        );
     }
 }

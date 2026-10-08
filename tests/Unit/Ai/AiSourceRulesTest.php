@@ -88,4 +88,35 @@ final class AiSourceRulesTest extends TestCase
         self::assertStringNotContainsString('CURLOPT_SSL_VERIFYPEER', $source, 'Ověřování TLS zůstává výchozí (zapnuté).');
         self::assertStringNotContainsString('CURLOPT_SSL_VERIFYHOST', $source);
     }
+    // ---------------------------------------------------------------- plán 009, AC 36 (grep část)
+
+    public function test_vector_sql_only_in_embedding_repository_and_migration(): void
+    {
+        self::assertSame(['src/Infrastructure/Persistence/PdoArticleEmbeddingRepository.php'], self::filesContaining('src', 'VEC_'));
+        self::assertSame(
+            ['database/migrations/202610080001_create_article_embeddings_table.php'],
+            self::filesMatching('database', '~VECTOR\s*(\(|INDEX)~'),
+        );
+    }
+
+    public function test_ollama_endpoint_only_in_ollama_client(): void
+    {
+        self::assertSame(['src/Ai/Embedding/OllamaEmbeddingClient.php'], self::filesContaining('src', '/api/embed'));
+    }
+
+    public function test_rag_and_example_08_do_not_depend_on_admin_repositories_or_pdo(): void
+    {
+        $files = ['src/Ai/Examples/Example08SemanticSearch.php'];
+        foreach (glob(AiFixtures::root() . '/src/Ai/Rag/*.php') ?: [] as $file) {
+            $files[] = substr($file, strlen(AiFixtures::root()) + 1);
+        }
+        self::assertGreaterThanOrEqual(3, count($files), 'Chybí src/Ai/Rag/ArticleIndexer.php a IndexReport.php.');
+
+        foreach ($files as $file) {
+            $source = (string) file_get_contents(AiFixtures::root() . '/' . $file);
+            foreach (['ArticleAdminRepository', 'AuditLogRepository', '\\PDO', 'PDO;'] as $forbidden) {
+                self::assertStringNotContainsString($forbidden, $source, $file . ': ' . $forbidden);
+            }
+        }
+    }
 }

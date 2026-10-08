@@ -6,9 +6,11 @@ namespace App\Console\Command;
 
 use App\Ai\AiBudgetExceeded;
 use App\Ai\AiProvider;
+use App\Ai\Embedding\EmbeddingFailed;
 use App\Ai\Examples\DemoArticles;
 use App\Ai\Examples\Example06WritingAssistant;
 use App\Ai\Examples\Example07AskNewsroom;
+use App\Ai\Examples\Example08SemanticSearch;
 use App\Ai\Examples\ExampleContext;
 use App\Ai\Examples\ExampleRegistry;
 use App\Ai\Examples\ExampleResult;
@@ -23,12 +25,12 @@ use App\Console\Output;
 use App\Domain\Ai\TokenUsage;
 
 /**
- * ai:priklad NN – spustí AI příklad 01–07. Volby: `--clanek=` a `--model=` (01–05), `--akce=` a `--text=` (06),
- * `--otazka=` (07). Z konzole se volání loguje bez uživatele (`userId null`).
+ * ai:priklad NN – spustí AI příklad 01–08. Volby: `--clanek=` a `--model=` (01–05), `--akce=` a `--text=` (06),
+ * `--otazka=` (07 a 08). Z konzole se volání loguje bez uživatele (`userId null`).
  */
 final readonly class AiExampleCommand implements Command
 {
-    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–07 [--clanek=…] [--model=ID] '
+    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–08 [--clanek=…] [--model=ID] '
         . '[--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]';
 
     public function __construct(
@@ -36,6 +38,7 @@ final readonly class AiExampleCommand implements Command
         private ExampleRunner $runner,
         private Example06WritingAssistant $writing,
         private Example07AskNewsroom $askNewsroom,
+        private Example08SemanticSearch $semanticSearch,
     ) {}
 
     public function run(array $arguments, Output $output): int
@@ -51,9 +54,10 @@ final readonly class AiExampleCommand implements Command
             return match ($parsed['id']) {
                 '06' => $this->runWriting($parsed, $output),
                 '07' => $this->runAskNewsroom($parsed, $output),
+                '08' => $this->runSemanticSearch($parsed, $output),
                 default => $this->runArticleExample($parsed, $output),
             };
-        } catch (InvalidExampleInput|InvalidModelOutput|LlmCallFailed|AiBudgetExceeded $exception) {
+        } catch (InvalidExampleInput|InvalidModelOutput|EmbeddingFailed|LlmCallFailed|AiBudgetExceeded $exception) {
             $output->error($exception->getMessage());
 
             return 1;
@@ -135,6 +139,19 @@ final readonly class AiExampleCommand implements Command
     }
 
     /**
+     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string} $parsed
+     */
+    private function runSemanticSearch(array $parsed, Output $output): int
+    {
+        $result = $this->semanticSearch->ask($parsed['question'] ?? Example08SemanticSearch::DEMO_QUESTION, null);
+
+        $output->line(sprintf('Příklad %s – %s', $this->semanticSearch->id(), $this->semanticSearch->title()));
+        $this->printResult($result, $output);
+
+        return 0;
+    }
+
+    /**
      * @param list<string> $arguments
      * @return array{id: string, article: string, model: string, action: string, text: ?string, question: ?string}|null
      *         null při špatném zápisu nebo neznámém čísle příkladu
@@ -154,7 +171,7 @@ final readonly class AiExampleCommand implements Command
             }
         }
 
-        if ($id === null || !in_array($id, ['01', '02', '03', '04', '05', '06', '07'], true)) {
+        if ($id === null || !in_array($id, ['01', '02', '03', '04', '05', '06', '07', '08'], true)) {
             return null;
         }
 

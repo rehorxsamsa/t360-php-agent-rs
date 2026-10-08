@@ -31,5 +31,6 @@
     <php>
         <env name="DB_NAME" value="redakce_test" force="true"/>
         <env name="AI_PROVIDER" value="falesny" force="true"/>
+        <env name="EMBED_PROVIDER" value="falesny" force="true"/>
     </php>
 </phpunit>

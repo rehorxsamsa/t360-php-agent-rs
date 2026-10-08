@@ -6,7 +6,9 @@ namespace App\Ai\Client;
 
 /**
  * HTTP přes cURL – jediné místo v aplikaci, které volá `curl_*`.
- * Jen HTTPS, bez následování přesměrování; ověřování TLS certifikátu zůstává ve výchozím (zapnutém) stavu.
+ * Ve výchozím stavu jen HTTPS, bez následování přesměrování; ověřování TLS certifikátu zůstává ve výchozím (zapnutém) stavu.
+ * Prostý HTTP povoluje jen volba `allowPlainHttp` – určená pro lokální službu uvnitř sítě Dockeru (Ollama, ADR-0009),
+ * nikdy pro Claude API.
  */
 final readonly class CurlHttpTransport implements HttpTransport
 {
@@ -16,6 +18,7 @@ final readonly class CurlHttpTransport implements HttpTransport
     public function __construct(
         private int $connectTimeoutSeconds = 5,
         private int $timeoutSeconds = 90,
+        private bool $allowPlainHttp = false,
     ) {}
 
     public function post(string $url, #[\SensitiveParameter] array $headers, string $body): HttpResult
@@ -102,7 +105,7 @@ final readonly class CurlHttpTransport implements HttpTransport
             CURLOPT_HTTPHEADER => $headerLines,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeoutSeconds,
             CURLOPT_TIMEOUT => $this->timeoutSeconds,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => $this->allowPlainHttp ? CURLPROTO_HTTP | CURLPROTO_HTTPS : CURLPROTO_HTTPS,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_HEADERFUNCTION => static function (\CurlHandle $handle, string $line) use (&$responseHeaders): int {
                 if (str_starts_with($line, 'HTTP/')) {

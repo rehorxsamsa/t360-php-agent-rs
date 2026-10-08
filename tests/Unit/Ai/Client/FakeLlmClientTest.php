@@ -463,4 +463,83 @@ final class FakeLlmClientTest extends TestCase
 
         self::assertEquals(new FakeLlmClient()->complete($request), new FakeLlmClient()->complete($request));
     }
+    // ---------------------------------------------------------------- plán 009, AC 17: scénář příkladu 08
+
+    /** @param list<array<string, mixed>> $content */
+    private static function request08(array|string $content): LlmRequest
+    {
+        return new LlmRequest(AiFixtures::SONNET, 'Systém 08', [['role' => 'user', 'content' => $content]], 1024, '08', userId: 7, effort: 'low');
+    }
+
+    /**
+     * @param list<string> $blocks
+     * @return array<string, mixed>
+     */
+    private static function searchResult(string $source, string $title, array $blocks): array
+    {
+        return [
+            'type' => 'search_result',
+            'source' => $source,
+            'title' => $title,
+            'content' => array_map(static fn(string $text): array => ['type' => 'text', 'text' => $text], $blocks),
+            'citations' => ['enabled' => true],
+        ];
+    }
+
+    public function test_example_08_without_search_results_says_answer_is_not_in_articles(): void
+    {
+        foreach (['Otázka: Co víte o kvasinkách?', [['type' => 'text', 'text' => 'Otázka: Co víte o kvasinkách?']]] as $content) {
+            $response = new FakeLlmClient()->complete(self::request08($content));
+
+            self::assertSame('end_turn', $response->stopReason);
+            self::assertSame('V nalezených článcích odpověď není.', $response->text);
+        }
+    }
+
+    public function test_example_08_cites_first_block_of_first_search_result(): void
+    {
+        $first = 'Vědci popsali, jak spánek ovlivňuje paměť. Druhá věta perexu.';
+        $request = self::request08([
+            self::searchResult('/clanek/nova-studie-o-spanku', 'Nová studie: spánek', [$first, 'Spánek ovlivňuje paměť víc, než se čekalo.']),
+            self::searchResult('/clanek/docker-pro-vyvojare', 'Docker pro vývojáře', ['Docker sjednocuje prostředí.']),
+            ['type' => 'text', 'text' => 'Otázka: Jak spánek ovlivňuje paměť?'],
+        ]);
+
+        $response = new FakeLlmClient()->complete($request);
+
+        self::assertSame('end_turn', $response->stopReason);
+        self::assertSame('fake', $response->provider);
+        self::assertEquals(
+            [
+                ['type' => 'text', 'text' => 'Podle článku „Nová studie: spánek“: '],
+                [
+                    'type' => 'text',
+                    'text' => 'Vědci popsali, jak spánek ovlivňuje paměť.',
+                    'citations' => [[
+                        'type' => 'search_result_location',
+                        'source' => '/clanek/nova-studie-o-spanku',
+                        'title' => 'Nová studie: spánek',
+                        'cited_text' => $first,
+                        'search_result_index' => 0,
+                        'start_block_index' => 0,
+                        'end_block_index' => 1,
+                    ]],
+                ],
+            ],
+            $response->content,
+        );
+        self::assertSame('Podle článku „Nová studie: spánek“: Vědci popsali, jak spánek ovlivňuje paměť.', $response->text);
+        self::assertGreaterThan(0, $response->usage->input);
+        self::assertGreaterThan(0, $response->usage->output);
+    }
+
+    public function test_example_08_scenario_is_deterministic(): void
+    {
+        $request = self::request08([
+            self::searchResult('/clanek/a', 'A', ['První blok. Druhá věta.']),
+            ['type' => 'text', 'text' => 'Otázka: Q?'],
+        ]);
+
+        self::assertEquals(new FakeLlmClient()->complete($request), new FakeLlmClient()->complete($request));
+    }
 }

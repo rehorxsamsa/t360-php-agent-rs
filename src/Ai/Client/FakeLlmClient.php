@@ -44,6 +44,10 @@ final readonly class FakeLlmClient implements StreamingLlmClient
             return $this->toolScenario($request, $inputChars);
         }
 
+        if ($request->exampleId === '08') {
+            return $this->searchScenario($request, $inputChars);
+        }
+
         $text = $this->answer($request);
 
         return new LlmResponse(
@@ -200,6 +204,73 @@ final readonly class FakeLlmClient implements StreamingLlmClient
         $question = is_string($request->messages[0]['content']) ? $request->messages[0]['content'] : '';
 
         return $this->toolUseResponse($request, $inputChars, 'Hledám v publikovaných článcích.', new ToolCall('fake_search', 'hledej_clanky', ['query' => $this->searchQuery($question)]));
+    }
+
+    /**
+     * Scénář příkladu 08 (RAG s citacemi): bez bloků `search_result` odpoví, že odpověď v článcích není; jinak
+     * „přepíše“ první větu prvního bloku prvního zdroje a doplní citaci `search_result_location` na celý ten blok –
+     * tvarem odpovídá skutečné odpovědi Claude s `citations`, ale obsahově nic nechápe.
+     */
+    private function searchScenario(LlmRequest $request, int $inputChars): LlmResponse
+    {
+        $first = $this->firstSearchResult($request);
+        if ($first === null) {
+            return $this->finalToolResponse($request, $inputChars, 'V nalezených článcích odpověď není.', 'end_turn');
+        }
+
+        $intro = sprintf('Podle článku „%s“: ', $first['title']);
+        $sentence = $this->firstSentence($first['block'], 300);
+        $content = [
+            ['type' => 'text', 'text' => $intro],
+            [
+                'type' => 'text',
+                'text' => $sentence,
+                'citations' => [[
+                    'type' => 'search_result_location',
+                    'source' => $first['source'],
+                    'title' => $first['title'],
+                    'cited_text' => $first['block'],
+                    'search_result_index' => 0,
+                    'start_block_index' => 0,
+                    'end_block_index' => 1,
+                ]],
+            ],
+        ];
+        $text = $intro . $sentence;
+
+        return new LlmResponse(
+            $text,
+            $request->model,
+            'end_turn',
+            new TokenUsage($this->estimateTokens($inputChars), $this->estimateTokens($this->contentLength($content))),
+            'fake',
+            content: $content,
+        );
+    }
+
+    /**
+     * První zdroj (`search_result`) poslední zprávy: adresa, titulek a text prvního bloku; null, není-li žádný použitelný.
+     *
+     * @return array{source: string, title: string, block: string}|null
+     */
+    private function firstSearchResult(LlmRequest $request): ?array
+    {
+        $content = $request->messages[count($request->messages) - 1]['content'];
+        foreach (is_array($content) ? $content : [] as $block) {
+            if (($block['type'] ?? null) !== 'search_result') {
+                continue;
+            }
+
+            $parts = is_array($block['content'] ?? null) ? $block['content'] : [];
+            $text = is_array($parts[0] ?? null) ? ($parts[0]['text'] ?? null) : null;
+            if (!is_string($block['source'] ?? null) || !is_string($block['title'] ?? null) || !is_string($text) || trim($text) === '') {
+                return null;
+            }
+
+            return ['source' => $block['source'], 'title' => $block['title'], 'block' => $text];
+        }
+
+        return null;
     }
 
     /** @param array<mixed> $data dekódovaný výsledek nástroje hledej_clanky */

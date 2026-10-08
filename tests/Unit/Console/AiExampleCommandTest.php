@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Console;
 
 use App\Ai\Client\FakeLlmClient;
+use App\Ai\Embedding\FakeEmbeddingClient;
+use App\Ai\Rag\ArticleIndexer;
 use App\Ai\Examples\Example06WritingAssistant;
 use App\Ai\Examples\WritingTask;
 use App\Console\ConsoleApplication;
@@ -12,6 +14,7 @@ use App\Console\Output;
 use App\Tests\Unit\Support\FixedClock;
 use App\Tests\Unit\Support\InMemoryAiCallRepository;
 use App\Tests\Unit\Support\InMemoryArticleAdminRepository;
+use App\Tests\Unit\Support\InMemoryArticleEmbeddingRepository;
 use App\Tests\Unit\Support\InMemoryArticleRepository;
 use App\Tests\Unit\Support\InMemoryAuditLogRepository;
 use App\Tests\Unit\Support\InMemoryUserRepository;
@@ -22,8 +25,8 @@ use PHPUnit\Framework\TestCase;
 /** Plán 006, AC 29: příkaz `ai:priklad NN [--clanek=…] [--model=…]` (falešný klient, log v paměti). */
 final class AiExampleCommandTest extends TestCase
 {
-    /** Plán 008, AC 32: nápověda pro příklady 01–07 (regrese M6 záměrná). */
-    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–07 [--clanek=…] [--model=ID] [--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]';
+    /** Plán 009, AC 30: nápověda pro příklady 01–08 (regrese M7 záměrná). */
+    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–08 [--clanek=…] [--model=ID] [--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]';
 
     /** @var resource */
     private $stdout;
@@ -121,7 +124,7 @@ final class AiExampleCommandTest extends TestCase
     public static function invalidArguments(): iterable
     {
         yield 'no example' => [['ai:priklad']];
-        yield 'example 08' => [['ai:priklad', '08']];
+        yield 'example 09' => [['ai:priklad', '09']];
         yield 'unknown writing action' => [['ai:priklad', '06', '--akce=xyz']];
         yield 'example 1' => [['ai:priklad', '1']];
         yield 'unknown option' => [['ai:priklad', '01', '--neco=1']];
@@ -247,5 +250,82 @@ final class AiExampleCommandTest extends TestCase
         self::assertSame(1, $code);
         self::assertStringContainsString('Zadejte otázku (3–500 znaků).', $this->allOutput());
         self::assertSame([], $this->aiCalls->calls);
+    }
+    // ---------------------------------------------------------------- plán 009, AC 30: příklad 08
+
+    /** Aplikace nad kontraktem dat plánu 009 se zaindexovanými publikovanými články (falešní klienti). */
+    private function ragApplication(InMemoryAiCallRepository $aiCalls, bool $indexed = true): ConsoleApplication
+    {
+        $container = TestContainer::withoutSession(
+            new InMemoryUserRepository(),
+            new InMemoryAuditLogRepository(),
+            clock: FixedClock::at('2026-10-08 12:00:00'),
+            aiCalls: $aiCalls,
+            embeddings: InMemoryArticleEmbeddingRepository::contract(),
+            embeddingClient: new FakeEmbeddingClient(),
+        );
+        if ($indexed) {
+            $container->get(ArticleIndexer::class)->update();
+        }
+
+        return $container->get(ConsoleApplication::class);
+    }
+
+    public function test_example_08_prints_fields_citation_and_one_call(): void
+    {
+        $aiCalls = new InMemoryAiCallRepository();
+
+        $code = $this->ragApplication($aiCalls)->run(['ai:priklad', '08', '--otazka=Jak spánek ovlivňuje paměť?'], new Output($this->stdout, $this->stderr));
+        $out = $this->read($this->stdout);
+
+        self::assertSame(0, $code, $this->allOutput());
+        self::assertStringContainsString('Příklad 08 – Sémantické vyhledávání (RAG)', $out);
+        self::assertMatchesRegularExpression('~^Otázka: Jak spánek ovlivňuje paměť\?$~mu', $out);
+        self::assertMatchesRegularExpression('~^Odpověď: .*\[1\].*$~mu', $out);
+        self::assertMatchesRegularExpression('~^Nalezené články: \[1\] .* – /clanek/nova-studie-o-spanku \(vzdálenost 0,\d{3}\)~mu', $out);
+        self::assertMatchesRegularExpression('~^Citace \[1\]: „.+“ – /clanek/nova-studie-o-spanku$~mu', $out);
+        self::assertMatchesRegularExpression('~^Zdroje: /clanek/nova-studie-o-spanku$~mu', $out);
+        self::assertMatchesRegularExpression('~^Embedding dotazu: model fake-hash-768 · falešný klient · \d+ tokenů · \d+ ms$~mu', $out);
+        self::assertMatchesRegularExpression(sprintf(self::SUMMARY, 1), $out);
+        self::assertStringNotContainsString('druhy-koncept', $out);
+        self::assertStringNotContainsString('planovany-clanek', $out);
+        self::assertCount(1, $aiCalls->calls);
+        self::assertNull($aiCalls->calls[0]->userId);
+        self::assertSame('08', $aiCalls->calls[0]->exampleId);
+    }
+
+    public function test_example_08_without_question_uses_demo_question(): void
+    {
+        $aiCalls = new InMemoryAiCallRepository();
+
+        $code = $this->ragApplication($aiCalls)->run(['ai:priklad', '08'], new Output($this->stdout, $this->stderr));
+
+        self::assertSame(0, $code, $this->allOutput());
+        self::assertMatchesRegularExpression('~^Otázka: Jak spánek ovlivňuje paměť\?$~mu', $this->read($this->stdout));
+        self::assertCount(1, $aiCalls->calls);
+    }
+
+    public function test_example_08_with_empty_index_answers_without_llm(): void
+    {
+        $aiCalls = new InMemoryAiCallRepository();
+
+        $code = $this->ragApplication($aiCalls, indexed: false)->run(['ai:priklad', '08'], new Output($this->stdout, $this->stderr));
+        $out = $this->read($this->stdout);
+
+        self::assertSame(0, $code, $this->allOutput());
+        self::assertMatchesRegularExpression('~^Odpověď: V publikovaných článcích jsem k tomu nic nenašel\.$~mu', $out);
+        self::assertStringContainsString('Index je prázdný', $this->allOutput());
+        self::assertSame([], $aiCalls->calls);
+    }
+
+    public function test_example_08_with_too_short_question_fails_without_calling_llm(): void
+    {
+        $aiCalls = new InMemoryAiCallRepository();
+
+        $code = $this->ragApplication($aiCalls)->run(['ai:priklad', '08', '--otazka=ab'], new Output($this->stdout, $this->stderr));
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString('Zadejte otázku (3–500 znaků).', $this->allOutput());
+        self::assertSame([], $aiCalls->calls);
     }
 }

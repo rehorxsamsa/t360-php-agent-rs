@@ -11,11 +11,17 @@ use App\Ai\Client\FakeLlmClient;
 use App\Ai\Client\HttpTransport;
 use App\Ai\Client\MeteredLlmClient;
 use App\Ai\Cost\ModelCatalog;
+use App\Ai\Embedding\EmbeddingClient;
+use App\Ai\Embedding\EmbeddingConfig;
+use App\Ai\Embedding\EmbeddingProvider;
+use App\Ai\Embedding\FakeEmbeddingClient;
+use App\Ai\Embedding\OllamaEmbeddingClient;
 use App\Ai\LlmClient;
 use App\Ai\PromptLibrary;
 use App\Ai\StreamingLlmClient;
 use App\Console\Command\AiExampleCommand;
 use App\Console\Command\CreateAdminCommand;
+use App\Console\Command\IndexArticlesCommand;
 use App\Console\Command\MigrateCommand;
 use App\Console\Command\MigrationStatusCommand;
 use App\Console\Command\RollbackCommand;
@@ -24,6 +30,7 @@ use App\Console\ConsoleApplication;
 use App\Container\Container;
 use App\Domain\Ai\AiCallRepository;
 use App\Domain\Article\ArticleAdminRepository;
+use App\Domain\Article\ArticleEmbeddingRepository;
 use App\Domain\Article\ArticleRepository;
 use App\Domain\Audit\AuditLogRepository;
 use App\Domain\Category\CategoryRepository;
@@ -46,6 +53,7 @@ use App\Infrastructure\Migration\PdoMigrationRepository;
 use App\Infrastructure\Persistence\ConnectionFactory;
 use App\Infrastructure\Persistence\PdoAiCallRepository;
 use App\Infrastructure\Persistence\PdoArticleAdminRepository;
+use App\Infrastructure\Persistence\PdoArticleEmbeddingRepository;
 use App\Infrastructure\Persistence\PdoArticleRepository;
 use App\Infrastructure\Persistence\PdoAuditLogRepository;
 use App\Infrastructure\Persistence\PdoCategoryRepository;
@@ -97,6 +105,12 @@ $container->set(
 $container->set(
     ArticleAdminRepository::class,
     static fn(Container $c): ArticleAdminRepository => new PdoArticleAdminRepository($c->get(\PDO::class)),
+);
+
+// Vektory publikovaných článků pro sémantické vyhledávání (příklad 08, ADR-0009).
+$container->set(
+    ArticleEmbeddingRepository::class,
+    static fn(Container $c): ArticleEmbeddingRepository => new PdoArticleEmbeddingRepository($c->get(\PDO::class)),
 );
 
 $container->set(
@@ -156,6 +170,7 @@ $container->set(
         'admin:vytvor' => CreateAdminCommand::class,
         'db:seed' => SeedCommand::class,
         'ai:priklad' => AiExampleCommand::class,
+        'ai:indexuj' => IndexArticlesCommand::class,
     ]),
 );
 
@@ -180,6 +195,26 @@ $container->set(
     PromptLibrary::class,
     static fn(): PromptLibrary => new PromptLibrary($root . '/src/Ai/Prompts'),
 );
+
+// Embeddingy (ADR-0009): falešný klient bez sítě, nebo lokální Ollama podle EMBED_PROVIDER. Prostý HTTP se povoluje
+// jen pro transport předaný Ollamě (síť Dockeru); Claude API zůstává jen na HTTPS. Timeout 120 s (první dotaz načítá model).
+$container->set(
+    EmbeddingConfig::class,
+    static fn(): EmbeddingConfig => EmbeddingConfig::fromEnvironment(getenv()),
+);
+
+$container->set(EmbeddingClient::class, static function (Container $c): EmbeddingClient {
+    $config = $c->get(EmbeddingConfig::class);
+
+    return match ($config->provider) {
+        EmbeddingProvider::Fake => new FakeEmbeddingClient(),
+        EmbeddingProvider::Ollama => new OllamaEmbeddingClient(
+            new CurlHttpTransport(timeoutSeconds: 120, allowPlainHttp: true),
+            $config->ollamaUrl,
+            $config->model,
+        ),
+    };
+});
 
 // Falešný klient v dev kontejneru čeká 60 ms mezi přírůstky proudu, aby byl streaming vidět (testy ho nahrazují instancí bez zpoždění).
 $container->set(
