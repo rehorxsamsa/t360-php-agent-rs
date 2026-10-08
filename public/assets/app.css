@@ -385,6 +385,19 @@ form button.button-danger,
     font-size: 0.875rem;
 }
 
+/* AI příklad 08: panel stavu indexu vektorů nad formulářem s otázkou. */
+.ai-index {
+    margin: 1.5rem 0;
+    padding: 0 1rem 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: #f6f8fa;
+}
+
+.ai-index h2 {
+    margin-top: 0.75rem;
+}
+
 /* AI příklad 06: živý výstup proudu (jen text, zalomení řádků zachovaná) a tlačítko „Přerušit“. */
 .ai-stream-buttons {
     display: flex;

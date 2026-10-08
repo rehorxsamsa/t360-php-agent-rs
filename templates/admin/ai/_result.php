@@ -1,6 +1,6 @@
 <?php
 /**
- * Blok výsledku AI příkladu (01–05 a 07): varování, pole, souhrn spotřeby a surová odpověď.
+ * Blok výsledku AI příkladu (01–05, 07 a 08): varování, pole, souhrn spotřeby a surová odpověď.
  * Výstup modelu i nástrojů je nedůvěryhodný (LLM05): vždy jen přes e(), nikdy přes Markdown renderer.
  *
  * @var \App\Ai\Examples\ExampleResult $result

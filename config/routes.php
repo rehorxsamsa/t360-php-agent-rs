@@ -8,6 +8,7 @@ use App\Http\Controller\Admin\AskNewsroomController;
 use App\Http\Controller\Admin\AuditLogController;
 use App\Http\Controller\Admin\DashboardController;
 use App\Http\Controller\Admin\LoginController;
+use App\Http\Controller\Admin\SemanticSearchController;
 use App\Http\Controller\Admin\WritingAssistantController;
 use App\Http\Controller\ArticleController;
 use App\Http\Controller\HealthController;
@@ -35,11 +36,14 @@ return static function (Router $router): void {
     $router->get('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'confirmDelete']);
     $router->post('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'delete']);
     $router->get('/admin/ai', [AiController::class, 'index']);
-    // Příklady 06 a 07 mají vlastní stránky; musí stát PŘED obecnou trasou /admin/ai/{example} (router bere první shodu).
+    // Příklady 06–08 mají vlastní stránky; musí stát PŘED obecnou trasou /admin/ai/{example} (router bere první shodu).
     $router->get('/admin/ai/06', [WritingAssistantController::class, 'show']);
     $router->post('/admin/ai/06/proud', [WritingAssistantController::class, 'stream']);
     $router->get('/admin/ai/07', [AskNewsroomController::class, 'show']);
     $router->post('/admin/ai/07', [AskNewsroomController::class, 'ask']);
+    $router->get('/admin/ai/08', [SemanticSearchController::class, 'show']);
+    $router->post('/admin/ai/08', [SemanticSearchController::class, 'ask']);
+    $router->post('/admin/ai/08/indexace', [SemanticSearchController::class, 'reindex']);
     $router->get('/admin/ai/{example}', [AiController::class, 'show']);
     $router->post('/admin/ai/{example}', [AiController::class, 'run']);
     $router->get('/admin/audit', [AuditLogController::class, 'index']);
