@@ -17,8 +17,8 @@ Ověřeno 2026-10-03 (plán 006, ADR-0006) a znovu 2026-10-04 (plán 008, ADR-00
 - **Tool use:** bloky `thinking` (se `signature`) se v tool use smyčce **musí vrátit nezměněné**, jinak 400 → `LlmResponse` nese
   surové bloky. PHP past: `json_decode(…, true)` udělá z `"input":{}` pole a `json_encode` z něj `[]` → 400.
   `tool_result` bloky první v `user` zprávě, všechny paralelní v jedné.
-- Skill `ai-integrace` byl po M6 přepsán anglicky, ale o streamingu říká „rozhraní se rozšíří“ a „EventSource/fetch“; plán 008
-  otázka 9 navrhuje úpravu podle ADR-0008 — ověř, zda proběhla.
+- Skill `ai-integrace` je od commitu po plánu 008 v souladu s ADR-0008; embeddingy v něm (`nomic-embed-text`) zastaraly —
+  plán 009 otázka 9 navrhuje `embeddinggemma` + ADR-0009 (ověř, zda proběhlo).
 
 **Why:** skill by vedl k chybám 400 a k porušení ADR-0003; ceny a modely se mění rychle.
 

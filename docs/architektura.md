@@ -1,8 +1,9 @@
 # Architektura — Redakční systém (t360)
 
-> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-04 (plány 001–004, M1–M4 — hotovo;
+> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-08 (plány 001–004, M1–M4 — hotovo;
 > plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — hotovo;
-> plán 007 M8 audit log, opravy, tutoriál — implementováno; plán 008 M7 příklady 06–07 — návrh).
+> plán 007 M8 audit log, opravy, tutoriál — implementováno; plán 008 M7 příklady 06–07 — hotovo;
+> plán 009 M7b příklad 08 RAG — návrh).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -10,7 +11,8 @@
 > [ADR-0005](adr/0005-vlastni-markdown-renderer.md) vlastní Markdown renderer ·
 > [ADR-0006](adr/0006-vlastni-llm-klient-curl.md) vlastní LLM klient přes cURL ·
 > [ADR-0007](adr/0007-casy-v-databazi-utc-vs-praha.md) časy v DB: UTC vs. Europe/Prague (navrženo) ·
-> [ADR-0008](adr/0008-streaming-a-nastroje-llm.md) streaming a tool use v LLM klientovi (navrženo).
+> [ADR-0008](adr/0008-streaming-a-nastroje-llm.md) streaming a tool use v LLM klientovi ·
+> [ADR-0009](adr/0009-semanticke-vyhledavani-embeddingy-a-citace.md) embeddingy (Ollama), MariaDB VECTOR a citace (navrženo).
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -40,20 +42,23 @@ flowchart LR
         UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)<br/>AuditLogSearch → AuditLogPage (M8)"]
     end
     subgraph Dom["App\\Domain — entity, VO, rozhraní repozitářů"]
-        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>AiCallRepository + AiCall, TokenUsage (M6)<br/>AuditLogRepository::count/search, AuditLogFilter, AuditLogRecord (M8)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
+        I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>AiCallRepository + AiCall, TokenUsage (M6)<br/>AuditLogRepository::count/search, AuditLogFilter, AuditLogRecord (M8)<br/>ArticleEmbeddingRepository + Embedding, SimilarArticle (M7b)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
     end
     subgraph Inf["App\\Infrastructure — PDO, migrace, config"]
-        R["Pdo*Repository (vč. PdoArticleRepository M4,<br/>PdoArticleAdminRepository, PdoCategory/TagRepository M5,<br/>PdoAiCallRepository M6)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
+        R["Pdo*Repository (vč. PdoArticleRepository M4,<br/>PdoArticleAdminRepository, PdoCategory/TagRepository M5,<br/>PdoAiCallRepository M6, PdoArticleEmbeddingRepository M7b)<br/>ConnectionFactory, DatabaseConfig<br/>SystemClock, NativeSession"]
         MG["Migration\\Migrator<br/>PdoMigrationRepository<br/>database/migrations/*.php<br/>Seed + database/seeds/*.php (M4)"]
     end
     subgraph Ai["App\\Ai (M6, plán 006 + ADR-0006)"]
         EX["Examples: ExampleRunner, ExampleRegistry,<br/>Example01…05, StructuredCall, PromptLibrary<br/>AiUsageReport, AiConfig, Cost\\ModelCatalog<br/>M7 (plán 008): Example06WritingAssistant (proud),<br/>Example07AskNewsroom (tool use smyčka)"]
         L["LlmClient + StreamingLlmClient (porty, ADR-0008)<br/>= MeteredLlmClient (denní limit + log ai_calls)<br/>→ FakeLlmClient | AnthropicClient (SseParser)<br/>→ HttpTransport post / stream (CurlHttpTransport)"]
         TL["Tools (M7): hledej_clanky, nacti_clanek<br/>jen čtení publikovaných"]
+        EM["Embedding (M7b, ADR-0009): EmbeddingClient (port)<br/>→ FakeEmbeddingClient | OllamaEmbeddingClient<br/>Rag: ArticleIndexer (ai:indexuj)<br/>Example08SemanticSearch (search_result + citace)"]
         EX --> L
         EX --> TL
+        EX --> EM
     end
     API["Claude Messages API<br/>api.anthropic.com"]
+    OL["Ollama (profil ai-local)<br/>embeddinggemma, http://ollama:11434"]
     DI -.->|sestavuje| K
     DI -.->|sestavuje| CA
     K -.->|"get(controller)"| DI
@@ -67,7 +72,9 @@ flowchart LR
     EX --> I
     L --> I
     TL -->|"ArticleRepository (veřejné čtení)"| I
+    EM -->|"ArticleEmbeddingRepository"| I
     L -.->|"HTTPS, jen s AI_PROVIDER=anthropic"| API
+    EM -.->|"HTTP v síti Dockeru, jen s EMBED_PROVIDER=ollama"| OL
 ```
 
 Stav po M1: `Kernel` s pevně zadrátovanou cestou `/zdravi`, rozhraní `Domain\Health\DatabaseHealth`
@@ -108,7 +115,7 @@ Strukturovaný výstup přes `output_config.format` + validace v PHP (ADR-0006; 
 odmítá). Článek jde do promptu v `<clanek>` značkách, výstup modelu se jen zobrazuje přes `e()` a nikam se neukládá;
 výsledek přežije PRG v session (`ExampleResultStash`).
 
-M7 (plán 008, **návrh**, ADR-0008) — příklad 06 streamuje: `Admin\WritingAssistantController` (POST `/admin/ai/06/proud`
+M7 (plán 008, hotovo, ADR-0008) — příklad 06 streamuje: `Admin\WritingAssistantController` (POST `/admin/ai/06/proud`
 s CSRF) uvolní zámek session a vrátí `Response::stream(producent)`; producent běží až v `Response::send()` (mimo middleware,
 chyby mění na SSE `error`) a přes `Example06WritingAssistant` → `StreamingLlmClient` (= `MeteredLlmClient`) → `AnthropicClient`
 (`HttpTransport::stream`, `SseParser`) nebo `FakeLlmClient` posílá delty jako SSE (`X-Accel-Buffering: no`); prohlížeč je čte
@@ -116,6 +123,15 @@ přes `fetch` (`public/assets/ai-stream.js`), přerušení = `AbortController` �
 Příklad 07 (PRG jako 01–05) volá `LlmClient::complete()` v smyčce ≤ 5 kroků s nástroji `hledej_clanky`/`nacti_clanek`
 (`App\Ai\Tools`, jen `ArticleRepository` = publikované); surové bloky odpovědi (vč. `thinking`) se vracejí nezměněné.
 Schéma DB se nemění (krok = řádek `ai_calls`).
+
+M7b (plán 009, **návrh**, ADR-0009) — příklad 08 (sémantické vyhledávání, RAG): `Admin\SemanticSearchController` / `ai:indexuj`
+→ `ArticleIndexer` → `EmbeddingClient` (`FakeEmbeddingClient` bez sítě, nebo `OllamaEmbeddingClient` → Ollama `embeddinggemma`
+v profilu Compose `ai-local`, HTTP jen uvnitř sítě Dockeru) → `ArticleEmbeddingRepository::save` (tabulka `article_embeddings`,
+`VECTOR(768)` + HNSW index s kosinem). Dotaz: `Example08SemanticSearch` → `embedQuery` → `nearestPublished` (vnitřní poddotaz
+přes vektorový index, **vnější** filtr „publikované a ne budoucí“ z `Clock` — `WHERE` v dotazu s indexem by filtroval až po `LIMIT`)
+→ `LlmClient::complete()` se zdroji jako bloky `search_result` → citace `search_result_location` ze surových bloků odpovědi,
+ověřené v PHP. Indexují se jen publikované články, změny pozná `source_hash` počítaný v SQL; use-cases administrace (M5) se nemění.
+Embeddingy se nelogují do `ai_calls` (lokálně zdarma), volání Claude ano.
 
 M8 (plán 007, implementováno) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
 bez CSRF) → `AuditLogSearch` (Application: validace `akce`/`od`/`do`, 50 na stránku) → `AuditLogRepository::count` +
@@ -140,6 +156,9 @@ flowchart TB
         A["app · app-t360<br/>PHP 8.4-FPM (target dev)<br/>repo → /app"]
         D[("db · db-t360<br/>MariaDB 11.8<br/>127.0.0.1:3307:3306")]
         AD["adminer · adminer-t360<br/>127.0.0.1:8081"]
+        subgraph PL["profil ai-local — make ai-local (M7b, plán 009)"]
+            O["ollama · ollama-t360<br/>ollama/ollama · bez portu na hostitele<br/>volume ollama_models (embeddinggemma)"]
+        end
         subgraph P["profil mcp — spouští Claude Code přes compose run (stdio)"]
             PW["mcp-playwright<br/>Chromium headless"]
             MM["mcp-mariadb<br/>uživatel redakce_cteni"]
@@ -149,6 +168,7 @@ flowchart TB
     B -->|":8080"| W
     W -->|"FastCGI :9000"| A
     A -->|"redakce_app"| D
+    A -.->|"HTTP :11434 /api/embed, jen EMBED_PROVIDER=ollama"| O
     AD --> D
     CC -->|"docker compose exec app php -l / composer"| A
     CC -->|"stdio"| PW
@@ -285,6 +305,14 @@ erDiagram
         int duration_ms
         enum status "ok, error"
         datetime created_at
+    }
+    articles ||--o| article_embeddings : "CASCADE, M7b (plán 009)"
+    article_embeddings {
+        bigint article_id PK, FK
+        varchar model
+        char source_hash
+        vector embedding "VECTOR(768), VECTOR INDEX cosine"
+        datetime indexed_at
     }
 ```
 Vše `InnoDB`, `utf8mb4_czech_ci`. Migrace spouští `bin/konzole migrace:spust` (`make migrate`)
