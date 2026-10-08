@@ -397,8 +397,8 @@ Playwright MCP: URL podle pravidla v hlavičce. Snímky s absolutní cestou do `
    `Krok 1 – hledej_clanky: …`, `Krok 2 – nacti_clanek: …`, `Zdroje: /clanek/docker-pro-vyvojare` a souhrn s „volání 3“.
 4. `… ai:priklad 07 --otazka="Co víte o kvasinkách?"` → „V publikovaných článcích jsem k tomu nic nenašel.“, „volání 2“,
    `Zdroje: Žádné – odpověď nevychází z článků.`
-5. Negativní: `ai:priklad 08`, `ai:priklad 06 --akce=xyz`, `ai:priklad 01 --neco=1` → kód `1` a
-   „Použití: php bin/konzole ai:priklad 01–07 [--clanek=…] [--model=ID] [--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]“;
+5. Negativní: `ai:priklad 09` (do M7b `08`), `ai:priklad 06 --akce=xyz`, `ai:priklad 01 --neco=1` → kód `1` a
+   „Použití: php bin/konzole ai:priklad 01–08 (do M7b `01–07`) [--clanek=…] [--model=ID] [--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]“;
    `ai:priklad 06 --text=` → kód `1`, „Zadejte text.“; `ai:priklad 07 --otazka=ab` → kód `1`, „Zadejte otázku (3–500 znaků).“
 6. MCP (`redakce_cteni`): `SELECT example_id, user_id, stop_reason FROM ai_calls ORDER BY id DESC LIMIT 6` → volání z konzole
    mají `user_id NULL`.
@@ -411,7 +411,7 @@ Playwright MCP: URL podle pravidla v hlavičce. Snímky s absolutní cestou do `
    přihlášením), `-D -` ukáže `Allow: POST`.
 4. Přihlásit se podle P2–P3 (e-mail v `-d` jako `admin%40example.cz`), z `curl -s http://localhost:8080/admin/ai/06
    -H 'Cookie: redakce_session=<cookie>'` opsat `name="_csrf" value="…"`. S cookie:
-   - `…/admin/ai/08` → `404` „Stránka nenalezena“;
+   - `…/admin/ai/09` (do M7b `08`) → `404` „Stránka nenalezena“;
    - `curl -s -X POST http://localhost:8080/admin/ai/06/proud -H 'Cookie: redakce_session=<cookie>' -d '_csrf=<token>&action=zkrat&text=' -D -`
      → `422`, `Content-Type: application/json…`, tělo `{"error":"Zadejte text."}`; s `action=xyz&text=abc` → `{"error":"Vyberte akci."}`;
    - totéž bez `_csrf` nebo s `_csrf=abc` → `403`;
@@ -584,3 +584,102 @@ curl a Playwright podle pravidel v hlavičce souboru. Unit testy: `AdminAuditLog
 4. Regrese: M5 A7, M6 I8, `curl -s http://localhost:8080/zdravi -w '\n%{http_code}\n'` → `{"stav":"ok","db":"ok"}` a `200`;
    přihlášení a odhlášení (P3/P4) dál funguje a každé přibude v audit logu.
 5. `make qa` → kód 0; `git diff --stat composer.json composer.lock` prázdné.
+
+## AI příklad 08 (M7b)
+
+Plán: `docs/plan/009-semanticke-vyhledavani-rag.md` (AC 31–35). Předpoklad: `make up`, `make migrate`, `make seed`, admin z P5,
+`AI_PROVIDER=falesny`, `EMBED_PROVIDER=falesny` (výchozí). Pravidla hooku pro curl a URL pro Playwright viz hlavička souboru.
+MCP dotazy přes `redakce_cteni`. Snímky s absolutní cestou do `/home/q/projects/t360-php-agent-rs/tests/_artefakty/`.
+
+### R1: prostředí bez profilu `ai-local` (AC 31)
+1. `make up` → `docker compose ps --format '{{.Name}}'` vypíše `web-t360`, `app-t360`, `db-t360`, `adminer-t360`, ale **ne**
+   `ollama-t360`.
+2. `docker compose --profile ai-local config --quiet; echo $?` → `0`.
+3. `docker compose --profile ai-local config` → služba `ollama`: `container_name: ollama-t360`, `image: ollama/ollama:<pevná verze>`
+   (ne `latest`), pojmenovaný volume pro `/root/.ollama`, `profiles: [ai-local]`, **žádné** `ports`, jen síť `default`, healthcheck
+   `ollama list`; `app` na `ollama` nezávisí (`depends_on` bez `ollama`).
+4. `docker compose exec app printenv EMBED_PROVIDER EMBED_MODEL OLLAMA_URL` → `falesny`, `embeddinggemma`, `http://ollama:11434`.
+5. `.env.example` obsahuje `EMBED_PROVIDER`, `EMBED_MODEL`, `OLLAMA_URL` s komentářem; `make help` (nebo `Makefile`) má cíle `ai-local` a `index`.
+
+### R2: profil `ai-local` s Ollamou (AC 32; jen po schválení stažení obrazu ~3,8 GB + modelu 622 MB)
+1. `make ai-local` → kód 0; `docker compose ps ollama` → `ollama-t360` `healthy`.
+2. `docker compose exec ollama ollama list` → obsahuje `embeddinggemma`. Druhé `make ai-local` → kód 0, nic znovu nestahuje.
+3. `make down` → `docker ps --format '{{.Names}}'` neobsahuje `ollama-t360` ani jiný kontejner `*-t360`; síť `t360_default` je pryč
+   (`docker network ls` ji nemá).
+
+### R3: konzole (AC 29, 30)
+1. `docker compose exec app php bin/konzole ai:indexuj` → kód `0`, řádek „Index aktualizován: zaindexováno N, odebráno 0, čeká 0
+   (model fake-hash-768, falešný klient, tokeny T, X ms).“, kde N = počet publikovaných článků seedu (vč. naplánovaného).
+2. Znovu `ai:indexuj` → „zaindexováno 0, odebráno 0, čeká 0“. `make index` dělá totéž.
+3. `ai:indexuj vse` a `ai:indexuj --force` → kód `1`, „Použití: php bin/konzole ai:indexuj“.
+4. `docker compose exec app php bin/konzole ai:priklad 08 --otazka="Jak spánek ovlivňuje paměť?"` → kód `0`, „Příklad 08 – Sémantické
+   vyhledávání (RAG)“, řádky `Otázka: …`, `Odpověď: … [1]`, `Nalezené články: [1] Nová studie: spánek ovlivňuje paměť víc, než se čekalo –
+   /clanek/nova-studie-o-spanku (vzdálenost 0,…)`, `Citace [1]: „…“ – /clanek/nova-studie-o-spanku`, `Zdroje: /clanek/nova-studie-o-spanku`,
+   `Embedding dotazu: model fake-hash-768 · falešný klient · N tokenů · X ms` a souhrn s „volání 1“.
+5. `… ai:priklad 08` (bez `--otazka`) → použije ukázkovou otázku „Jak spánek ovlivňuje paměť?“.
+6. `… ai:priklad 08 --otazka="Co víte o kvasinkách?"` → „Odpověď: V publikovaných článcích jsem k tomu nic nenašel.“, „volání 0“,
+   žádný nový řádek v `ai_calls`.
+7. Negativní: `ai:priklad 09` → kód `1` a „Použití: php bin/konzole ai:priklad 01–08 [--clanek=…] [--model=ID]
+   [--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]“; `ai:priklad 08 --otazka=ab` → kód `1`, „Zadejte otázku (3–500 znaků).“
+8. MCP: `SELECT example_id, user_id, provider, status FROM ai_calls ORDER BY id DESC LIMIT 1` → `08`, `NULL`, `fake`, `ok`.
+
+### R4: nepřihlášený, CSRF a chybné adresy (AC 33, curl)
+1. `curl -s -X POST http://localhost:8080/admin/ai/08/indexace -o /dev/null -w '%{http_code}'` → `403` (bez session není platný
+   CSRF token); totéž `-X POST http://localhost:8080/admin/ai/08`.
+2. `curl -s http://localhost:8080/admin/ai/08 -D - -o /dev/null` → `303`, `Location: /admin/prihlaseni`.
+3. `curl -s http://localhost:8080/admin/ai/08/indexace -o /dev/null -w '%{http_code}'` (GET) → `405`.
+4. Přihlásit se podle P2–P3 (e-mail v `-d` jako `admin%40example.cz`), z `curl -s http://localhost:8080/admin/ai/08
+   -H 'Cookie: redakce_session=<cookie>'` opsat `name="_csrf" value="…"`. S cookie:
+   - `curl -s http://localhost:8080/admin/ai/09 -H 'Cookie: redakce_session=<cookie>' -o /dev/null -w '%{http_code}'` → `404`;
+   - `curl -s -X POST http://localhost:8080/admin/ai/08 -H 'Cookie: redakce_session=<cookie>' -d '_csrf=<token>&question=ab'`
+     → `422`, tělo obsahuje `role="alert"` a „Zadejte otázku (3–500 znaků).“;
+   - totéž bez `_csrf` nebo s `_csrf=abc` (i na `/admin/ai/08/indexace`) → `403`, `article_embeddings` ani `ai_calls` se nezmění.
+5. Žádná odpověď není `500`, žádné tělo neobsahuje `SQLSTATE` ani `Stack trace`.
+
+### R5: příklad 08 v prohlížeči (AC 34, Playwright + MCP, falešní klienti)
+1. MCP: `DELETE` nedělat — jen zjistit výchozí stav `SELECT COUNT(*) FROM article_embeddings` (po R3 = počet publikovaných).
+2. Přihlásit se (P4) → rozcestník → „AI nástroje“ → v přehledu odkaz „08 – Sémantické vyhledávání (RAG)“ s popisem (kromě 01–07)
+   → kliknout.
+3. Stránka `/admin/ai/08`: nadpis „08 – Sémantické vyhledávání (RAG)“, oddíl „Index článků“ s textem „Index: N z N publikovaných článků
+   je aktuálních (model fake-hash-768, falešný klient).“ (nebo „Index je prázdný.“), tlačítko „Aktualizovat index“; pole „Otázka“
+   s „Jak spánek ovlivňuje paměť?“, tlačítko „Najít a odpovědět“, poznámka „Odpovídá jen z publikovaných článků a cituje je.“
+4. „Aktualizovat index“ → po přesměrování zpráva v `role="status"` „Index aktualizován: zaindexováno …, odebráno …, čeká 0 (model
+   fake-hash-768).“; F5 → zpráva zmizí. MCP: `SELECT COUNT(*) FROM article_embeddings` =
+   `SELECT COUNT(*) FROM articles WHERE status = 'published'`.
+5. „Najít a odpovědět“ s výchozí otázkou → blok „Výsledek“: „Odpověď“ obsahuje „[1]“, „Nalezené články“ s
+   `/clanek/nova-studie-o-spanku` a „vzdálenost 0,…“, pole „Citace [1]“ s textem v uvozovkách „…“ a adresou, „Zdroje“
+   `/clanek/nova-studie-o-spanku`, „Embedding dotazu“, řádek „… · volání 1 · …“; otázka zůstane v poli. Snímek
+   `/home/q/projects/t360-php-agent-rs/tests/_artefakty/admin-ai-08-m7b.png`.
+6. MCP: `SELECT example_id, provider, status FROM ai_calls ORDER BY id DESC LIMIT 1` → `08`, `fake`, `ok`.
+7. F5 → výsledek zmizí (PRG), žádné nové volání v `ai_calls`.
+8. Otázka „Druhý koncept umělá inteligence redaktoři“ → výsledek (ani „Nalezené články“, „Citace“, „Zdroje“) nikdy neobsahuje
+   „Druhý koncept“ ani `druhy-koncept`; totéž pro `archivni-clanek` a `planovany-clanek`.
+9. Koncept po indexaci: v administraci přepnout publikovaný článek (např. `docker-pro-vyvojare`) do konceptu, **bez** nové indexace
+   položit otázku „Docker sjednocuje prostředí“ → `docker-pro-vyvojare` se ve výsledku neobjeví (vnější filtr) a stránka hlásí neaktuální
+   index; „Aktualizovat index“ → „odebráno 1“. Na konci článek vrátit do stavu „Publikováno“ a index znovu aktualizovat.
+10. Otázka „ab“ → `422`, „Zadejte otázku (3–500 znaků).“ v `role="alert"`, otázka zůstane v poli.
+
+### R6: escapování, klávesnice, konzole prohlížeče (AC 27, 34)
+1. Otázka `<img src=x onerror=alert(1)>` → ve výsledku vidět jako text, `page.on('dialog')` nic nezachytí.
+2. Klávesnice: na `/admin/ai/08` jen `Tab` na „Aktualizovat index“ → `Enter` spustí indexaci; `Tab` do pole „Otázka“ a na
+   „Najít a odpovědět“ → `Enter`; zaostřené prvky mají viditelný obrys.
+3. `browser_console_messages` (level `error`) po šťastné cestě R5 prázdné.
+
+### R7: živě s Ollamou (AC 35, volitelné; po R2)
+1. `EMBED_PROVIDER=ollama` (v `.env` nastaví člověk, agent `.env` nečte ani nemění) + `make up` → `ai:indexuj` → „model embeddinggemma,
+   Ollama (lokálně)“; MCP: `SELECT DISTINCT model FROM article_embeddings` → jen `embeddinggemma` (vektory falešného modelu odebrány).
+2. `docker compose exec app vendor/bin/phpunit --group live --filter OllamaEmbeddingLiveTest` → zelené (bez Ollamy `skipped`);
+   výpis vzdáleností (docker / spánek / modely) – nejmenší u spánku; hodnoty zapíše `ai-inzenyr` do `docs/ai-priklady/08.md`.
+3. Bez běžící Ollamy (`docker compose stop ollama`) → „Aktualizovat index“ → flash „Indexace selhala: Služba embeddingů (Ollama) neodpovídá
+   na http://ollama:11434 – spusťte ji: make ai-local.“; dotaz → `503` se stejnou zprávou. Nikdy `500`.
+4. Jen člověk s klíčem: `AI_PROVIDER=anthropic` → odpověď nese skutečné citace (`Citace [1]` s doslovným úsekem článku),
+   `ai_calls` má řádek `08` s `cost_usd > 0`.
+
+### R8: kvalita a regrese (AC 36)
+1. `make qa` → kód 0 (`AiSourceRulesTest` hlídá: `VEC_` jen v `PdoArticleEmbeddingRepository` a migraci, `/api/embed` jen
+   v `OllamaEmbeddingClient`, `src/Ai/Rag` a příklad 08 bez `ArticleAdminRepository`, `AuditLogRepository` a `\PDO`).
+2. `grep -rn 'curl_' src` → jen `src/Ai/Client/CurlHttpTransport.php`; `grep -rn 'allowPlainHttp' config` → jediný výskyt u
+   `OllamaEmbeddingClient`.
+3. `docker compose exec app php bin/konzole migrace:vrat` → odstraní jen `article_embeddings`; `make migrate` ji vrátí.
+4. Regrese M7: S1 (konzole 06/07), S5 (07 v prohlížeči) a přehled `/admin/ai` s 01–08; `curl -s http://localhost:8080/zdravi
+   -w '\n%{http_code}\n'` → `{"stav":"ok","db":"ok"}` a `200`.

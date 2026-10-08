@@ -26,7 +26,7 @@ Verze jsou ty, které běží v prostředí (`composer.json`, `compose.yaml`, `d
 5. **Audit log:** záznam změn s filtrem podle akce a data (časy v UTC, zobrazení v Europe/Prague).
 6. **Vlastní Markdown renderer** pro text článků (ADR-0005), bezpečné HTML.
 7. **Vlastní infrastruktura bez frameworku:** DI kontejner, router, pipeline middlewarů, migrátor databáze, šablony v čistém PHP s escapováním `e()`.
-8. **Konzole** `bin/konzole`: migrace, `admin:vytvor`, `db:seed`, `ai:priklad NN`.
+8. **Konzole** `bin/konzole`: migrace, `admin:vytvor`, `db:seed`, `ai:priklad NN`, `ai:indexuj`.
 9. **Bezpečnost:** CSRF token u každého POST, session cookie `HttpOnly; SameSite=Strict`, bezpečnostní hlavičky, tři databázové účty s odstupňovanými právy (DML, DDL, jen čtení).
 
 ### 3. AI část (zvláštní kapitola)
@@ -46,7 +46,7 @@ Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamov�
 | Náklady | tabulka `ai_calls` (jen metadata: tokeny, cena, trvání, stav – nikdy texty), denní limit tokenů `AI_DENNI_LIMIT_TOKENU` |
 | Bezpečnost LLM | obsah článků i výstup modelu je nedůvěryhodný vstup (obrana proti prompt injection), validace a escapování výstupu, nástroje jen čtou |
 
-**Sedm AI příkladů** (`docs/ai-priklady/`, konzole `ai:priklad NN`, v prohlížeči `/admin/ai`):
+**Osm AI příkladů** (`docs/ai-priklady/`, konzole `ai:priklad NN`, v prohlížeči `/admin/ai`):
 
 | # | Příklad | Co ukazuje |
 |---|---|---|
@@ -57,6 +57,7 @@ Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamov�
 | 05 | Překlad CZ → EN | zachování Markdownu, porovnání silnějšího a levnějšího modelu |
 | 06 | Asistent psaní | streaming odpovědi (SSE) |
 | 07 | Zeptej se redakce | tool use: model sám hledá a čte články |
+| 08 | Sémantické vyhledávání | embeddingy ve sloupci `VECTOR`, vektorový index, odpověď s ověřenými citacemi (RAG) |
 
 ### 4. Kvalita a testování
 | Nástroj | Verze | K čemu |
@@ -130,6 +131,7 @@ služby zdravé. Další cíle vypíše `make help`.
 | AI příklad 01–05 (např. perex) | <http://localhost:8080/admin/ai/01> |
 | AI příklad 06, asistent psaní se streamováním (admin) | <http://localhost:8080/admin/ai/06> |
 | AI příklad 07, zeptej se redakce (admin) | <http://localhost:8080/admin/ai/07> |
+| AI příklad 08, sémantické vyhledávání s citacemi (admin) | <http://localhost:8080/admin/ai/08> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
@@ -210,6 +212,30 @@ Co je dobré vědět:
 Výklad je v kapitole „Streaming a nástroje“ v [`docs/tutorial.html`](docs/tutorial.html#m7), rozhodnutí v
 [ADR-0008](docs/adr/0008-streaming-a-nastroje-llm.md), podklady v `docs/ai-priklady/06.md` a `07.md`.
 
+## AI příklad 08: sémantické vyhledávání s citacemi (M7b)
+Příklad 08 najde publikované články podle **významu** otázky (vektory ve sloupci MariaDB `VECTOR`) a Claude z nich odpoví s ověřenými
+citacemi. Běží bez API klíče i bez Ollamy (falešní klienti; falešný embedding rozumí jen shodě slov). Po `make migrate` a `make seed`:
+
+```bash
+make index                                  # = ai:indexuj, zaindexuje publikované články (opakovat lze, přepočítá jen změněné)
+docker compose exec -T app php bin/konzole ai:priklad 08
+docker compose exec -T app php bin/konzole ai:priklad 08 --otazka="Proč se mám před zkouškou pořádně vyspat?"
+```
+
+V prohlížeči (admin): <http://localhost:8080/admin/ai/08>, tlačítko „Aktualizovat index“ a pak „Najít a odpovědět“.
+
+Skutečné embeddingy přes lokální Ollamu (profil `ai-local`, stáhne obraz ~3,8 GB a model `embeddinggemma` 622 MB):
+
+```bash
+make ai-local                 # spustí Ollamu a stáhne model
+# do .env doplň EMBED_PROVIDER=ollama, pak:
+make up
+make index                    # po změně EMBED_PROVIDER vždy zaindexuj znovu
+```
+
+Živé ověření s Ollamou zatím nebylo provedeno. Výklad je v kapitole [M7b](docs/tutorial.html#m7b), rozhodnutí v
+[ADR-0009](docs/adr/0009-semanticke-vyhledavani-embeddingy-a-citace.md), podklady v `docs/ai-priklady/08.md`.
+
 Testy: `make test` (nebo `make qa`). Integrační testy schématu mažou a znovu vytvářejí tabulky
 v databázi `redakce_test`, proto dvě sady testů nesmí běžet paralelně nad `redakce_test`.
 
@@ -242,7 +268,7 @@ a pro vývoj stačí. Chceš-li začít znovu s novými hesly, smaž volume: `ma
 | `templates/` | PHP šablony (`layout`, `home`, `article`, `error`, `admin/`, `admin/articles/`, `admin/ai/`), výstup přes `e()` |
 | `database/seeds/` | ukázková data (`demo_content.php`), nahrává je `make seed` |
 | `database/migrations/` | migrace schématu (`RRRRMMDDHHMM_popis.php`) |
-| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed`, `ai:priklad NN` |
+| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed`, `ai:priklad NN`, `ai:indexuj` |
 | `docker/`, `compose.yaml`, `Makefile` | prostředí v Dockeru |
 | `.claude/`, `.mcp.json`, `.githooks/` | tým agentů, hooky, MCP servery |
 | `docs/` | zadání, architektura, ADR, plány, tutoriál |

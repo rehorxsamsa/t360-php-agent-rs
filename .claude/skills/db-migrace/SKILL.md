@@ -36,22 +36,26 @@ jen obsah dat, CLI příkazy `bin/konzole` a názvy DB/uživatelů z nasazovací
   (`entity_id` bez FK, entita už neexistuje).
 - Každý index odůvodni dotazem, který ho používá; ověř `EXPLAIN`.
 
-## Vektory (RAG, AI příklad 08, M7)
+## Vektory (RAG, AI příklad 08, M7b — plán 009, ADR-0009)
+Skutečné schéma je v `database/migrations/202610080001_create_article_embeddings_table.php`:
+`article_id` (PK, FK `ON DELETE CASCADE`), `model`, `source_hash`, `embedding VECTOR(768) NOT NULL`, `indexed_at`
+a `VECTOR INDEX idx_article_embeddings_embedding (embedding) M=8 DISTANCE=cosine`. Dimenze 768 = model `embeddinggemma`.
+
+**Past: filtr po indexu.** Dotaz, který používá vektorový index, bere kandidáty přes `ORDER BY vzdálenost LIMIT n`
+a ostatní podmínky se uplatní až poté, takže `WHERE a.status = 'published'` ve stejném dotazu může vrátit méně
+řádků, než kolik publikovaných článků existuje (ověřeno na MariaDB 11.8.9: z 20 kandidátů zůstalo 18).
+Proto dvoustupňově — vnitřní poddotaz vybere kandidáty přes index, vnější teprve filtruje publikovanost:
 ```sql
-CREATE TABLE article_embeddings (
-  article_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
-  model VARCHAR(100) NOT NULL,
-  embedding VECTOR(768) NOT NULL,
-  VECTOR INDEX (embedding) M=8 DISTANCE=cosine,
-  CONSTRAINT fk_article_embeddings_article_id FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
-) ENGINE=InnoDB;
--- dotaz:
-SELECT a.id, a.title, VEC_DISTANCE_COSINE(v.embedding, VEC_FromText(?)) AS distance
-FROM article_embeddings v JOIN articles a ON a.id = v.article_id
-WHERE a.status = 'published' ORDER BY distance LIMIT 5;
+SELECT a.id, a.slug, a.title, c.distance
+FROM (
+  SELECT article_id, VEC_DISTANCE_COSINE(embedding, VEC_FromText(:vector)) AS distance
+  FROM article_embeddings WHERE model = :model ORDER BY distance LIMIT 20
+) c JOIN articles a ON a.id = c.article_id
+WHERE a.status = 'published' AND a.published_at <= :now
+ORDER BY c.distance, a.id LIMIT :limit;
 ```
-Dimenzi (768) potvrď s ai-inzenýrem podle zvoleného modelu embeddingů. Syntaxi ověř v
-dokumentaci MariaDB pro nainstalovanou verzi.
+Podrobnosti a `EXPLAIN` jsou v `docs/ai-priklady/08.md`. Nepublikované články se nikdy neindexují a jejich vektory se
+při indexaci mažou (obrana ve třech vrstvách). Syntaxi vždy ověř v dokumentaci MariaDB pro nainstalovanou verzi.
 
 ## Uživatelé DB
 - `redakce_app` — SELECT/INSERT/UPDATE/DELETE na `redakce` (a `redakce_test`).

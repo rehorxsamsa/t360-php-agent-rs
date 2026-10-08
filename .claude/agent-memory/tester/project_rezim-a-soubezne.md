@@ -19,4 +19,8 @@ Pozor: `TestCase::result()` i `run()` jsou v PHPUnit 13 `final` (nepojmenovávat
 M7 (plán 008, 2026-10-04): T2+T3 hotové před T1 → AC 1–23, 32 zelené hned, RED jen HTTP (AC 24–31, chybí trasy → 404).
 Když T4 chybí úplně, RED se dokládá přímo v pracovním stromu (není třeba kopie HEAD). Helpery HTTP testů M7 jsou
 v `tests/Unit/Http/AdminAiM7TestCase.php`. Falešný proud 06: akce `zkrat` dá jen ~3 delty → měření bufferování (AC 34) přes `pokracuj`.
+M7b (plán 009, 2026-10-08): T2–T5 (vč. kontroleru) byly hotové dřív než T1 → všech 160 nových unit testů zelených hned;
+RED jen v kopii HEAD. V kopii HEAD (`docker run` bez env) padá i `KernelTest` (14×, „Chybí DB_HOST“) – artefakt prostředí,
+ne RED. Integrační testy kolidují s jiným agentem, který zrovna pouští phpunit (`Table 'users' already exists`) → počkat,
+až `ps aux | grep phpunit` nic neukáže, a pustit znovu. `StatementCounter::statements()` sčítá i `Com_*_multi`.
 Viz [[hook-curl-zavinac]].

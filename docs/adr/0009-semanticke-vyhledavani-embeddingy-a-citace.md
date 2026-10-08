@@ -1,5 +1,5 @@
 # ADR-0009: Sémantické vyhledávání – embeddingy přes Ollamu, MariaDB VECTOR a nativní citace Claude
-- **Stav:** navrženo
+- **Stav:** přijato
 - **Datum:** 2026-10-08
 - **Autor:** agent architekt
 - **Souvisí:** [plán 009](../plan/009-semanticke-vyhledavani-rag.md), [ADR-0006](0006-vlastni-llm-klient-curl.md),

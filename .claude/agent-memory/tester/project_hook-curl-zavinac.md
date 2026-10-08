@@ -30,6 +30,11 @@ z README). Dotaz do DB bez čtení .env: `docker compose exec -T db sh -c 'maria
 Přihlášení admin@example.cz / dlouhe-heslo-12 (README) funguje. Negativní fetch (422/403) vždy zapíše do konzole
 „Failed to load resource …“ — to je hláška prohlížeče, ne chyba JS; „prázdná konzole“ posuzovat jen u šťastné cesty.
 
+Režim B M7b (2026-10-08): `bin/konzole migrace:vrat` na dev DB zamítl auto-mode klasifikátor („Irreversible Local
+Destruction“) → rollback ověřovat jen integračním `SchemaTest` (redakce_test), nezkoušet obcházet. Unit fixtury (3 články)
+neodhalí chování nad seedem (14 článků) → deterministické „negativní“ dotazy vždy ověřit i nad skutečným seedem.
+Při hledání úniků v textu výsledku vyloučit ozvěnu otázky (pole „Otázka“ v bloku Výsledek).
+
 **Why:** hook chrání před `curl -d @soubor` (exfiltrace souborů); kontroluje text příkazu, ne sémantiku.
 **How to apply:** úpravy `tests/E2E-scenare.md` dělat nástrojem Edit/Write, ne přes Bash; v curl příkladech psát
 zavináč jako `%40`, URL bez uvozovek. V režimu A s paralelním programátorem nespouštět integrační testy

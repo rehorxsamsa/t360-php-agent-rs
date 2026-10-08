@@ -42,8 +42,8 @@ běží s ním.** Streaming a tool use (M7, ADR-0008): `StreamingLlmClient exten
 `stream(LlmRequest, callable(string): bool $onText): LlmResponse` (callback `false` = přerušení,
 `stopReason 'aborted'`; implementují ho `AnthropicClient`, `FakeLlmClient`, `MeteredLlmClient`; `LlmClient`
 beze změny). Tool use jsou data: `LlmRequest::$tools`, bloky obsahu ve zprávách, `LlmResponse::$content`
-(surové bloky) a `$toolCalls`; smyčku řídí příklad. Embeddingy přijdou až v M7b. Závazné signatury jsou
-v `docs/plan/006-ai-jadro.md` a `docs/plan/008-streaming-a-nastroje.md`.
+(surové bloky) a `$toolCalls`; smyčku řídí příklad. Embeddingy (M7b, ADR-0009): port `EmbeddingClient` s `OllamaEmbeddingClient` (model `embeddinggemma`, 768 dimenzí, profil `ai-local`) a deterministickým `FakeEmbeddingClient`; Anthropic vlastní embeddingy nemá, Voyage je v backlogu; citace přes nativní bloky `search_result`. Závazné signatury jsou
+v `docs/plan/006-ai-jadro.md`, `docs/plan/008-streaming-a-nastroje.md` a `docs/plan/009-semanticke-vyhledavani-rag.md`.
 
 ## Claude Messages API — minimum (ověř aktuálnost přes context7 / docs.claude.com)
 - `POST https://api.anthropic.com/v1/messages`, hlavičky `x-api-key`, `anthropic-version: 2023-06-01`,
@@ -81,7 +81,7 @@ v `docs/plan/006-ai-jadro.md` a `docs/plan/008-streaming-a-nastroje.md`.
 | 05 | **Překlad CZ → EN** se zachováním Markdownu a slugu | delší výstup, zachování formátu, porovnání modelů (kvalita × cena) |
 | 06 | **Asistent psaní v editoru** — „pokračuj v odstavci / zkrať / zjednoduš“ živě | streaming SSE v PHP i v prohlížeči (fetch + POST), přerušení |
 | 07 | **Zeptej se redakce** — chat nad obsahem webu s nástroji `hledej_clanky`, `nacti_clanek` | tool use, agentní smyčka, limit kroků, jen čtecí nástroje |
-| 08 | **Sémantické vyhledávání (RAG)** — embeddingy článků v MariaDB `VECTOR`, odpověď s citacemi | embeddingy (Ollama/Voyage), vektorový index, grounding, citace zdrojů |
+| 08 | **Sémantické vyhledávání (RAG)** — embeddingy článků v MariaDB `VECTOR`, odpověď s citacemi | embeddingy (Ollama, Voyage později), vektorový index, grounding, citace zdrojů |
 | 09 | **AI redaktor (agent s člověkem ve smyčce)** — z tématu: osnova → koncept → sebekontrola → uložení jako *koncept*, publikuje jen admin | plánování, reflexe, nadměrná autonomie (LLM06), schvalování |
 | 10 | **MCP server redakce** — CMS jako nástroj pro Claude Code/Desktop (`hledej_clanky`, `statistiky`, prompt `navrhni_clanek`) | Model Context Protocol, oficiální PHP SDK (ověř balíček `mcp/sdk`), STDIO transport, `claude mcp add` |
 

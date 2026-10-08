@@ -1,2 +1,2 @@
 - [Hook curl + Playwright omezení](project_hook-curl-zavinac.md) — curl: %40, URL bez uvozovek/proměnných/"$@", žádné PUT/-o soubor; Playwright jen localhost:8080 (date MMDDRRRR); počet dotazů přes Com_select
-- [Režim A souběžně s implementátory](project_rezim-a-soubezne.md) — část testů hned zelená; RED doložit v kopii HEAD (docker run); konstruktory v jednom pomocníkovi
+- [Režim A souběžně s implementátory](project_rezim-a-soubezne.md) — část/vše hned zelené; RED v kopii HEAD (KernelTest tam padá kvůli env); integrační kolize s cizím phpunit

@@ -1,5 +1,5 @@
 # 009 – AI příklad 08: Sémantické vyhledávání (RAG) s embeddingy v MariaDB VECTOR a citacemi
-Stav: návrh
+Stav: schváleno
 
 - **Milník:** M7b (uživatelský příběh 10 zadání; backlog M7b ze `STAV.md`) · **Režim:** výukový (viz `docs/plan/STAV.md`) —
   MVP, bez kola security review
@@ -60,7 +60,8 @@ redakce nic nepublikovala.“
 
 ### A. Falešný klient embeddingů (unit, `tests/Unit/Ai/Embedding/FakeEmbeddingClientTest.php`)
 1. **Algoritmus (závazný, deterministický):** `model()` = `fake-hash-768`, `provider()` = `fake`. Text → `mb_strtolower` → slova
-   `preg_split('/[^\p{L}\p{N}]+/u')` s `mb_strlen ≥ 3` → kmen = prvních 5 znaků (`mb_substr`) → `v[crc32(kmen) % 768] += 1` →
+   `preg_split('/[^\p{L}\p{N}]+/u')` s `mb_strlen ≥ 3` a mimo stop-slova (`FakeEmbeddingClient::STOP_WORDS`: tázací slova, „víte“, běžné
+   spojky; doplněno po E2E R3.6, kdy kmen „víte“ kolidoval s „obsah“ a otázka na kvasinky našla článek) → kmen = prvních 5 znaků (`mb_substr`) → `v[crc32(kmen) % 768] += 1` →
    normalizace na délku 1; text bez slov → `v[0] = 1`. Dokument = `titulek + "\n" + text`, dotaz = text dotazu (prefixy Ollamy se
    nepoužijí). **Given** stejný vstup dvakrát, **Then** shodné vektory; každý vektor má 768 složek a délku 1 (± 1e-9);
    `embedQuery('Docker')` a `embedDocuments([EmbeddingDocument('Docker', '')])` mají kosinovou vzdálenost 0 (± 1e-9);
@@ -131,6 +132,7 @@ redakce nic nepublikovala.“
 17. **S falešnými klienty** nad kontraktem dat (zaindexováno přes `ArticleIndexer`): „Jak spánek ovlivňuje paměť?“ → 1 volání LLM, první
     zdroj `/clanek/nova-studie-o-spanku`, „Odpověď“ obsahuje „[1]“, „Zdroje“ = `/clanek/nova-studie-o-spanku`, nikdy `druhy-koncept`,
     `archivni-clanek`, `planovany-clanek`; „Co víte o kvasinkách?“ → 0 volání LLM a „V publikovaných článcích jsem k tomu nic nenašel.“
+    (platí i nad celým ukázkovým obsahem `demo_content.php`, kde slovo „obsah“ dřív kolidovalo s kmenem „víte“)
     `FakeLlmClient` pro `08`: bez bloků `search_result` → `end_turn` „V nalezených článcích odpověď není.“; jinak `content` =
     `[{text 'Podle článku „{title 0}“: '}, {text {první věta prvního bloku zdroje 0}, citations [{search_result_location, source, title,
     cited_text = celý první blok, search_result_index 0, start_block_index 0, end_block_index 1}]}]`, `text` = spojení.
