@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Support;
 
 use App\Ai\AiConfig;
+use App\Ai\Client\FakeLlmClient;
 use App\Ai\Client\HttpTransport;
 use App\Ai\LlmClient;
+use App\Ai\StreamingLlmClient;
 use App\Container\Container;
 use App\Domain\Ai\AiCallRepository;
 use App\Domain\Article\ArticleAdminRepository;
@@ -111,6 +113,9 @@ final class TestContainer
      * = výjimka, nikdy cURL), konfigurace z kontraktu testovacích dat (falešný klient, limit 200 000).
      * `$llmClient` volitelně nahradí celý LlmClient (včetně MeteredLlmClient) – jinak se použije
      * skutečné zapojení z config/container.php. Vše líně, aby testy bez AI nenačítaly třídy AI.
+     *
+     * Plán 008: `FakeLlmClient::class` se vždy nahradí instancí bez zpoždění mezi deltami (dev má 60 ms);
+     * předaný `StreamingLlmClient` se zaregistruje pod `LlmClient` i `StreamingLlmClient`.
      */
     public static function replaceAiDependencies(
         Container $container,
@@ -131,8 +136,12 @@ final class TestContainer
             AiConfig::class,
             static fn(): AiConfig => $aiConfig ?? AiFixtures::config(),
         );
+        $container->set(FakeLlmClient::class, static fn(): FakeLlmClient => new FakeLlmClient());
         if ($llmClient !== null) {
             $container->set(LlmClient::class, static fn(): LlmClient => $llmClient);
+        }
+        if ($llmClient instanceof StreamingLlmClient) {
+            $container->set(StreamingLlmClient::class, static fn(): StreamingLlmClient => $llmClient);
         }
     }
 }

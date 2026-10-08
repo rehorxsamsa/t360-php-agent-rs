@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Ai\Client;
 
-use App\Ai\LlmClient;
+use App\Ai\Examples\WritingAction;
 use App\Ai\LlmRequest;
 use App\Ai\LlmResponse;
+use App\Ai\StreamingLlmClient;
+use App\Ai\ToolCall;
 use App\Domain\Ai\TokenUsage;
 
 /**
@@ -14,19 +16,35 @@ use App\Domain\Ai\TokenUsage;
  * (podle `exampleId` a textu uvnitř značek `<titulek>` a `<text>`). Tokeny se odhadují
  * jako znaky / 4, takže i bez klíče vidíte orientační cenu. Nejde o skutečný model:
  * např. „nález prompt injection“ v příkladu 04 je naskriptovaný (hledá slovo „ignoruj“).
+ *
+ * Umí i streamování (příklad 06: hotový text se rozdělí na přírůstky po 1–3 slovech se zpožděním
+ * `$streamDelayMs`) a tool use scénář příkladu 07 (hledej → načti → odpověz, viz `toolScenario()`).
  */
-final readonly class FakeLlmClient implements LlmClient
+final readonly class FakeLlmClient implements StreamingLlmClient
 {
     private const int CHARS_PER_TOKEN = 4;
 
+    /** Počet slov v po sobě jdoucích přírůstcích proudu (střídá se). */
+    private const array DELTA_WORDS = [2, 1, 3];
+
+    /** Slova, která se při hledání v příkladu 07 přeskakují (název aplikace, nic by nerozlišila). */
+    private const string SEARCH_STOP_WORD_PREFIX = 'redak';
+
+    /** @param int $streamDelayMs pauza mezi přírůstky proudu v ms (v testech 0, v dev kontejneru 60) */
+    public function __construct(private int $streamDelayMs = 0) {}
+
     public function complete(LlmRequest $request): LlmResponse
     {
-        $text = $this->answer($request);
-
         $inputChars = mb_strlen($request->system);
         foreach ($request->messages as $message) {
-            $inputChars += mb_strlen($message['content']);
+            $inputChars += $this->contentLength($message['content']);
         }
+
+        if ($request->exampleId === '07' && $request->tools !== null) {
+            return $this->toolScenario($request, $inputChars);
+        }
+
+        $text = $this->answer($request);
 
         return new LlmResponse(
             $text,
@@ -37,6 +55,67 @@ final readonly class FakeLlmClient implements LlmClient
         );
     }
 
+    public function stream(LlmRequest $request, callable $onText): LlmResponse
+    {
+        if ($request->tools !== null) {
+            throw new \LogicException('Streamování s nástroji není podporované.');
+        }
+
+        $response = $this->complete($request);
+
+        $sent = '';
+        foreach ($this->deltas($response->text) as $index => $delta) {
+            if ($index > 0 && $this->streamDelayMs > 0) {
+                usleep($this->streamDelayMs * 1000);
+            }
+
+            $sent .= $delta;
+            if ($onText($delta) === false) {
+                // Přerušený proud: výstup se odhadne jen z toho, co už bylo odesláno.
+                return new LlmResponse(
+                    $sent,
+                    $response->model,
+                    'aborted',
+                    new TokenUsage($response->usage->input, $this->estimateTokens(mb_strlen($sent))),
+                    'fake',
+                );
+            }
+        }
+
+        return $response;
+    }
+
+    /**
+     * Rozdělí text na přírůstky po 1–3 slovech (vždy na hranici slova, mezery zůstávají u slova);
+     * spojením přírůstků vznikne původní text.
+     *
+     * @return list<string>
+     */
+    private function deltas(string $text): array
+    {
+        preg_match_all('/\s*\S+\s*/u', $text, $matches);
+
+        $deltas = [];
+        $words = $matches[0];
+        for ($position = 0, $step = 0; $position < count($words); $step++) {
+            $size = self::DELTA_WORDS[$step % count(self::DELTA_WORDS)];
+            $deltas[] = implode('', array_slice($words, $position, $size));
+            $position += $size;
+        }
+
+        return $deltas;
+    }
+
+    /** @param string|list<array<string, mixed>> $content */
+    private function contentLength(string|array $content): int
+    {
+        if (is_string($content)) {
+            return mb_strlen($content);
+        }
+
+        return mb_strlen(json_encode($content, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) ?: '');
+    }
+
     private function estimateTokens(int $chars): int
     {
         return intdiv($chars + self::CHARS_PER_TOKEN - 1, self::CHARS_PER_TOKEN);
@@ -44,7 +123,7 @@ final readonly class FakeLlmClient implements LlmClient
 
     private function answer(LlmRequest $request): string
     {
-        $data = $request->messages[0]['content'];
+        $data = is_string($request->messages[0]['content']) ? $request->messages[0]['content'] : '';
         $title = $this->between($data, 'titulek');
         $excerpt = $this->between($data, 'perex');
         $body = $this->between($data, 'text');
@@ -55,8 +134,160 @@ final readonly class FakeLlmClient implements LlmClient
             '03' => $this->json($this->classification($request, $title, $body)),
             '04' => $this->json($this->review($body)),
             '05' => $this->json(['title' => '[EN] ' . $title, 'excerpt' => $excerpt, 'body' => $body]),
+            '06' => $this->writing($data, $body),
             default => sprintf('Falešná odpověď klienta (příklad %s).', $request->exampleId),
         };
+    }
+
+    /** Asistent psaní: podle akce v zadání (`Úkol: …`) pokračuje, zkracuje nebo zjednodušuje text ze značky `<text>`. */
+    private function writing(string $data, string $text): string
+    {
+        $plain = $this->plainText($text);
+
+        if (str_contains($data, 'Úkol: ' . WritingAction::Shorten->instruction())) {
+            return $this->firstSentences($plain, max(20, intdiv(mb_strlen($plain), 2)));
+        }
+
+        if (str_contains($data, 'Úkol: ' . WritingAction::Simplify->instruction())) {
+            return 'Jednodušeji řečeno: ' . $this->firstSentences($plain, 200);
+        }
+
+        $words = preg_split('/\s+/u', $plain, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $tail = implode(' ', array_slice($words, -4));
+
+        return 'To ale není všechno. Souvislosti, které se na první pohled snadno přehlédnou, často rozhodují o výsledku celého projektu. '
+            . 'Proto má smysl věnovat pozornost i detailům a ověřit si, že všichni chápou zadání stejně. '
+            . 'Toto pokračování vytvořil falešný klient a navazuje na slova „' . $tail . '“.';
+    }
+
+    /**
+     * Scénář příkladu 07 podle posledního kroku konverzace (deterministický, bez sítě):
+     * 1) otázka → `tool_use hledej_clanky`, 2) výsledky hledání → `tool_use nacti_clanek` nebo „nic jsem nenašel“,
+     * 3) načtený článek → odpověď se zdrojem.
+     */
+    private function toolScenario(LlmRequest $request, int $inputChars): LlmResponse
+    {
+        $last = $request->messages[count($request->messages) - 1]['content'];
+        $results = is_array($last) ? $this->toolResults($last) : [];
+
+        if (isset($results['fake_read'])) {
+            $article = $results['fake_read'];
+            if ($article['isError']) {
+                $text = 'Článek se nepodařilo načíst.';
+            } else {
+                $data = $article['data'];
+                $title = is_string($data['title'] ?? null) ? $data['title'] : '';
+                $url = is_string($data['url'] ?? null) ? $data['url'] : '';
+                $excerpt = is_string($data['excerpt'] ?? null) ? trim($data['excerpt']) : '';
+                $body = is_string($data['body'] ?? null) ? $data['body'] : '';
+                $summary = $this->firstSentence($excerpt !== '' ? $excerpt : $this->plainText($body), 300);
+                $text = sprintf('Podle článku „%s“ (%s): %s', $title, $url, $summary);
+            }
+
+            return $this->finalToolResponse($request, $inputChars, $text, 'end_turn');
+        }
+
+        if (isset($results['fake_search'])) {
+            $search = $results['fake_search'];
+            $found = $search['isError'] ? '' : $this->firstResultSlug($search['data']);
+            if ($found === '') {
+                return $this->finalToolResponse($request, $inputChars, 'V publikovaných článcích jsem k tomu nic nenašel.', 'end_turn');
+            }
+
+            return $this->toolUseResponse($request, $inputChars, 'Čtu nejvhodnější článek.', new ToolCall('fake_read', 'nacti_clanek', ['slug' => $found]));
+        }
+
+        $question = is_string($request->messages[0]['content']) ? $request->messages[0]['content'] : '';
+
+        return $this->toolUseResponse($request, $inputChars, 'Hledám v publikovaných článcích.', new ToolCall('fake_search', 'hledej_clanky', ['query' => $this->searchQuery($question)]));
+    }
+
+    /** @param array<mixed> $data dekódovaný výsledek nástroje hledej_clanky */
+    private function firstResultSlug(array $data): string
+    {
+        $results = $data['results'] ?? null;
+        $first = is_array($results) ? ($results[0] ?? null) : null;
+        $slug = is_array($first) ? ($first['slug'] ?? null) : null;
+
+        return is_string($slug) ? $slug : '';
+    }
+
+    /**
+     * Hledaný výraz: prvních 5 znaků nejdelšího slova otázky (aspoň 4 písmena, při shodě délky první),
+     * malými písmeny. Slova začínající „redak“ se přeskakují – v „Zeptej se redakce“ by hledání
+     * po názvu aplikace nenašlo nic užitečného.
+     */
+    private function searchQuery(string $question): string
+    {
+        preg_match_all('/\p{L}{4,}/u', $question, $matches);
+
+        $best = '';
+        foreach ($matches[0] as $word) {
+            if (str_starts_with(mb_strtolower($word), self::SEARCH_STOP_WORD_PREFIX)) {
+                continue;
+            }
+            if (mb_strlen($word) > mb_strlen($best)) {
+                $best = $word;
+            }
+        }
+
+        return mb_strtolower(mb_substr($best !== '' ? $best : trim($question), 0, 5));
+    }
+
+    /**
+     * Výsledky nástrojů z poslední zprávy `user`: id volání → dekódovaný obsah (JSON) a příznak chyby.
+     *
+     * @param list<array<string, mixed>> $blocks
+     * @return array<string, array{isError: bool, data: array<mixed>}>
+     */
+    private function toolResults(array $blocks): array
+    {
+        $results = [];
+        foreach ($blocks as $block) {
+            if (($block['type'] ?? null) !== 'tool_result' || !is_string($block['tool_use_id'] ?? null)) {
+                continue;
+            }
+
+            $decoded = is_string($block['content'] ?? null) ? json_decode($block['content'], true) : null;
+            $results[$block['tool_use_id']] = [
+                'isError' => ($block['is_error'] ?? false) === true,
+                'data' => is_array($decoded) ? $decoded : [],
+            ];
+        }
+
+        return $results;
+    }
+
+    private function finalToolResponse(LlmRequest $request, int $inputChars, string $text, string $stopReason): LlmResponse
+    {
+        $content = [['type' => 'text', 'text' => $text]];
+
+        return new LlmResponse(
+            $text,
+            $request->model,
+            $stopReason,
+            new TokenUsage($this->estimateTokens($inputChars), $this->estimateTokens($this->contentLength($content))),
+            'fake',
+            content: $content,
+        );
+    }
+
+    private function toolUseResponse(LlmRequest $request, int $inputChars, string $text, ToolCall $call): LlmResponse
+    {
+        $content = [
+            ['type' => 'text', 'text' => $text],
+            ['type' => 'tool_use', 'id' => $call->id, 'name' => $call->name, 'input' => $call->input],
+        ];
+
+        return new LlmResponse(
+            $text,
+            $request->model,
+            'tool_use',
+            new TokenUsage($this->estimateTokens($inputChars), $this->estimateTokens($this->contentLength($content))),
+            'fake',
+            content: $content,
+            toolCalls: [$call],
+        );
     }
 
     private function between(string $data, string $tag): string
@@ -176,6 +407,14 @@ final readonly class FakeLlmClient implements LlmClient
         }
 
         return $result !== '' ? $result : $this->cut($text, $maxChars);
+    }
+
+    /** Pouze první věta; je-li delší než `$maxChars`, zkrátí se. */
+    private function firstSentence(string $text, int $maxChars): string
+    {
+        $sentences = preg_split('/(?<=[.!?])\s+/u', trim($text), 2) ?: [];
+
+        return $this->cut($sentences[0] ?? '', $maxChars);
     }
 
     private function cut(string $text, int $maxChars): string

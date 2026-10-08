@@ -11,6 +11,7 @@ use App\Tests\Unit\Support\AiFixtures;
 use App\Tests\Unit\Support\ScriptedLlmClient;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use App\Tests\Unit\Support\MessageText;
 
 /** Plán 006, §1 a AC 15: strukturované volání – dekódování, validace, nejvýše jedno opakování. */
 final class StructuredCallTest extends TestCase
@@ -94,7 +95,7 @@ final class StructuredCallTest extends TestCase
         );
         self::assertCount(3, $retry->messages);
         self::assertSame('user', $retry->messages[2]['role']);
-        self::assertStringContainsString('title: nejvýše 10 znaků', $retry->messages[2]['content']);
+        self::assertStringContainsString('title: nejvýše 10 znaků', MessageText::of($retry->messages[2]['content']));
         $first = $this->llm->requests[0];
         self::assertSame($first->model, $retry->model);
         self::assertSame($first->system, $retry->system);

@@ -13,6 +13,7 @@ use App\Ai\LlmClient;
 use App\Ai\LlmErrorType;
 use App\Ai\LlmRequest;
 use App\Ai\LlmResponse;
+use App\Ai\StreamingLlmClient;
 use App\Domain\Ai\AiCall;
 use App\Domain\Ai\AiCallRepository;
 use App\Domain\Ai\AiCallStatus;
@@ -23,8 +24,11 @@ use App\Domain\Time\Clock;
  * Dekorátor kolem skutečného klienta: hlídá denní limit tokenů, počítá cenu z katalogu modelů
  * a zapisuje metadata každého volání do `ai_calls` (bez obsahu promptů a odpovědí).
  * Kontejner skládá vždy tento dekorátor, takže limit a log platí pro všechny příklady.
+ *
+ * `stream()` (ADR-0008) měří stejně jako `complete()`: přerušené volání se zapíše jako `ok` se `stopReason 'aborted'`
+ * a odhadnutou spotřebou, chyba uprostřed proudu jako `error` s nulovou spotřebou.
  */
-final readonly class MeteredLlmClient implements LlmClient
+final readonly class MeteredLlmClient implements StreamingLlmClient
 {
     private const string TIME_ZONE = 'Europe/Prague';
 
@@ -38,6 +42,26 @@ final readonly class MeteredLlmClient implements LlmClient
     ) {}
 
     public function complete(LlmRequest $request): LlmResponse
+    {
+        return $this->metered($request, fn(): LlmResponse => $this->inner->complete($request));
+    }
+
+    public function stream(LlmRequest $request, callable $onText): LlmResponse
+    {
+        $inner = $this->inner;
+        if (!$inner instanceof StreamingLlmClient) {
+            throw new \LogicException('Vnitřní klient neumí streamování.');
+        }
+
+        return $this->metered($request, static fn(): LlmResponse => $inner->stream($request, $onText));
+    }
+
+    /**
+     * Společná část `complete()` a `stream()`: limit před voláním, cena a záznam do `ai_calls` po něm.
+     *
+     * @param callable(): LlmResponse $call vlastní volání vnitřního klienta
+     */
+    private function metered(LlmRequest $request, callable $call): LlmResponse
     {
         try {
             $model = $this->catalog->get($request->model);
@@ -56,7 +80,7 @@ final readonly class MeteredLlmClient implements LlmClient
 
         $startedAt = hrtime(true);
         try {
-            $response = $this->inner->complete($request);
+            $response = $call();
         } catch (LlmCallFailed $exception) {
             $this->recordFailure($request, $now, $this->elapsedMs($startedAt), $exception);
 

@@ -14,6 +14,7 @@ use App\Domain\Article\ArticleStatus;
 use App\Tests\Unit\Support\AiFixtures;
 use App\Tests\Unit\Support\InMemoryArticleAdminRepository;
 use PHPUnit\Framework\Attributes\DataProvider;
+use App\Tests\Unit\Support\MessageText;
 
 /** Plán 006, AC 19: výběr zdroje článku a limity délky textu před voláním LLM. */
 final class ExampleRunnerTest extends ExampleTestCase
@@ -25,7 +26,7 @@ final class ExampleRunnerTest extends ExampleTestCase
 
     private function userMessage(): string
     {
-        return $this->lastRequest()->messages[0]['content'];
+        return MessageText::of($this->lastRequest()->messages[0]['content']);
     }
 
     public function test_demo_source_uses_standard_demo_article(): void

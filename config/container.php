@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Ai\AiConfig;
 use App\Ai\AiProvider;
 use App\Ai\Client\AnthropicClient;
+use App\Ai\Client\BufferedStreamingClient;
 use App\Ai\Client\CurlHttpTransport;
 use App\Ai\Client\FakeLlmClient;
 use App\Ai\Client\HttpTransport;
@@ -12,6 +13,7 @@ use App\Ai\Client\MeteredLlmClient;
 use App\Ai\Cost\ModelCatalog;
 use App\Ai\LlmClient;
 use App\Ai\PromptLibrary;
+use App\Ai\StreamingLlmClient;
 use App\Console\Command\AiExampleCommand;
 use App\Console\Command\CreateAdminCommand;
 use App\Console\Command\MigrateCommand;
@@ -179,12 +181,18 @@ $container->set(
     static fn(): PromptLibrary => new PromptLibrary($root . '/src/Ai/Prompts'),
 );
 
+// Falešný klient v dev kontejneru čeká 60 ms mezi přírůstky proudu, aby byl streaming vidět (testy ho nahrazují instancí bez zpoždění).
+$container->set(
+    FakeLlmClient::class,
+    static fn(): FakeLlmClient => new FakeLlmClient(streamDelayMs: 60),
+);
+
 $container->set(LlmClient::class, static function (Container $c): LlmClient {
     $config = $c->get(AiConfig::class);
     $catalog = $c->get(ModelCatalog::class);
 
     $inner = match ($config->provider) {
-        AiProvider::Fake => new FakeLlmClient(),
+        AiProvider::Fake => $c->get(FakeLlmClient::class),
         AiProvider::Anthropic => new AnthropicClient($c->get(HttpTransport::class), $catalog, $config->apiKey),
     };
 
@@ -196,6 +204,14 @@ $container->set(LlmClient::class, static function (Container $c): LlmClient {
         $config->provider,
         $config->dailyTokenLimit,
     );
+});
+
+// Streamování (ADR-0008): stejná instance jako LlmClient (MeteredLlmClient umí obojí), aby se volání ze streamu
+// počítalo do téhož limitu a logu. Klient bez streamování (jen v testech) se obalí záložním adaptérem.
+$container->set(StreamingLlmClient::class, static function (Container $c): StreamingLlmClient {
+    $client = $c->get(LlmClient::class);
+
+    return $client instanceof StreamingLlmClient ? $client : new BufferedStreamingClient($client);
 });
 
 // Seed běží jako aplikační účet (stačí DML); samotný příkaz odmítne prostředí mimo dev|test.

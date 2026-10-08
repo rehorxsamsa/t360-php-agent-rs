@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Console;
 
+use App\Ai\Client\FakeLlmClient;
+use App\Ai\Examples\Example06WritingAssistant;
+use App\Ai\Examples\WritingTask;
 use App\Console\ConsoleApplication;
 use App\Console\Output;
+use App\Tests\Unit\Support\FixedClock;
 use App\Tests\Unit\Support\InMemoryAiCallRepository;
 use App\Tests\Unit\Support\InMemoryArticleAdminRepository;
+use App\Tests\Unit\Support\InMemoryArticleRepository;
 use App\Tests\Unit\Support\InMemoryAuditLogRepository;
 use App\Tests\Unit\Support\InMemoryUserRepository;
 use App\Tests\Unit\Support\TestContainer;
@@ -17,7 +22,8 @@ use PHPUnit\Framework\TestCase;
 /** Plán 006, AC 29: příkaz `ai:priklad NN [--clanek=…] [--model=…]` (falešný klient, log v paměti). */
 final class AiExampleCommandTest extends TestCase
 {
-    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–05 [--clanek=demo|demo-injection|ID] [--model=ID]';
+    /** Plán 008, AC 32: nápověda pro příklady 01–07 (regrese M6 záměrná). */
+    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–07 [--clanek=…] [--model=ID] [--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]';
 
     /** @var resource */
     private $stdout;
@@ -115,7 +121,8 @@ final class AiExampleCommandTest extends TestCase
     public static function invalidArguments(): iterable
     {
         yield 'no example' => [['ai:priklad']];
-        yield 'example 06' => [['ai:priklad', '06']];
+        yield 'example 08' => [['ai:priklad', '08']];
+        yield 'unknown writing action' => [['ai:priklad', '06', '--akce=xyz']];
         yield 'example 1' => [['ai:priklad', '1']];
         yield 'unknown option' => [['ai:priklad', '01', '--neco=1']];
         yield 'two examples' => [['ai:priklad', '01', '02']];
@@ -146,5 +153,99 @@ final class AiExampleCommandTest extends TestCase
         $this->runCommand([]);
 
         self::assertStringContainsString('ai:priklad', $this->read($this->stdout));
+    }
+
+    // ---------------------------------------------------------------- plán 008, AC 32: příklady 06 a 07
+
+    private const string SUMMARY = '~^Model claude-sonnet-5-5 · poskytovatel \S.* · volání %d · tokeny vstup [0-9 ]+ / výstup [0-9 ]+ · cena [0-9 ,.]+ USD$~mu';
+
+    /** Text, který pro daný úkol vrátí falešný klient (stejné zapojení jako příkaz). */
+    private static function fakeWritingText(string $action, string $text): string
+    {
+        $container = TestContainer::withoutSession(new InMemoryUserRepository(), new InMemoryAuditLogRepository());
+        $request = $container->get(Example06WritingAssistant::class)->request(WritingTask::fromInput($action, $text), null);
+
+        return new FakeLlmClient()->complete($request)->text;
+    }
+
+    public function test_example_06_streams_demo_text_and_prints_summary(): void
+    {
+        $code = $this->runCommand(['ai:priklad', '06', '--akce=zkrat']);
+        $out = $this->read($this->stdout);
+
+        self::assertSame(0, $code, $this->allOutput());
+        $expected = self::fakeWritingText('zkrat', Example06WritingAssistant::DEMO_TEXT);
+        self::assertNotSame('', $expected);
+        // Přírůstky se vypisují za sebou bez konce řádku (Output::write), text je tedy na jednom řádku pod hlavičkou.
+        self::assertStringContainsString(
+            'Příklad 06 – Asistent psaní (akce: Zkrátit)' . PHP_EOL . $expected . PHP_EOL,
+            $out,
+        );
+        self::assertMatchesRegularExpression(sprintf(self::SUMMARY, 1), $out);
+        self::assertCount(1, $this->aiCalls->calls);
+        self::assertSame('06', $this->aiCalls->calls[0]->exampleId);
+        self::assertNull($this->aiCalls->calls[0]->userId);
+        self::assertSame('end_turn', $this->aiCalls->calls[0]->stopReason);
+    }
+
+    public function test_example_06_default_action_continues_given_text(): void
+    {
+        $text = 'Vlastní odstavec pro asistenta. Druhá věta odstavce.';
+
+        $code = $this->runCommand(['ai:priklad', '06', '--text=' . $text]);
+        $out = $this->read($this->stdout);
+
+        self::assertSame(0, $code, $this->allOutput());
+        self::assertStringContainsString('Příklad 06 – Asistent psaní (akce: Pokračovat v textu)', $out);
+        self::assertStringContainsString(self::fakeWritingText('pokracuj', $text), $out);
+    }
+
+    public function test_example_06_with_empty_text_fails_without_calling_llm(): void
+    {
+        $code = $this->runCommand(['ai:priklad', '06', '--akce=zkrat', '--text=   ']);
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString('Zadejte text.', $this->allOutput());
+        self::assertSame([], $this->aiCalls->calls);
+    }
+
+    public function test_example_07_prints_fields_steps_sources_and_three_calls(): void
+    {
+        $aiCalls = new InMemoryAiCallRepository();
+        $application = TestContainer::withoutSession(
+            new InMemoryUserRepository(),
+            new InMemoryAuditLogRepository(),
+            articles: InMemoryArticleRepository::newsroomContract(),
+            clock: FixedClock::at('2026-10-04 12:00:00'),
+            aiCalls: $aiCalls,
+        )->get(ConsoleApplication::class);
+
+        $code = $application->run(['ai:priklad', '07', '--otazka=Co redakce píše o Dockeru?'], new Output($this->stdout, $this->stderr));
+        $out = $this->read($this->stdout);
+
+        self::assertSame(0, $code, $this->allOutput());
+        self::assertStringContainsString('Příklad 07 – Zeptej se redakce', $out);
+        self::assertMatchesRegularExpression('~^Otázka: Co redakce píše o Dockeru\?$~mu', $out);
+        self::assertMatchesRegularExpression('~^Odpověď: .*Docker pro vývojáře: proč na něm záleží.*$~mu', $out);
+        self::assertMatchesRegularExpression('~^Krok 1 – hledej_clanky: \S.*$~mu', $out);
+        self::assertMatchesRegularExpression('~^Krok 2 – nacti_clanek: \S.*$~mu', $out);
+        self::assertMatchesRegularExpression('~^Zdroje: /clanek/docker-pro-vyvojare$~mu', $out);
+        self::assertMatchesRegularExpression(sprintf(self::SUMMARY, 3), $out);
+        self::assertLessThan(strpos($out, 'Krok 1 –'), strpos($out, 'Odpověď:'));
+        self::assertLessThan(strpos($out, 'Zdroje:'), strpos($out, 'Krok 2 –'));
+        self::assertCount(3, $aiCalls->calls);
+        foreach ($aiCalls->calls as $call) {
+            self::assertNull($call->userId);
+            self::assertSame('07', $call->exampleId);
+        }
+    }
+
+    public function test_example_07_with_too_short_question_fails_without_calling_llm(): void
+    {
+        $code = $this->runCommand(['ai:priklad', '07', '--otazka=ab']);
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString('Zadejte otázku (3–500 znaků).', $this->allOutput());
+        self::assertSame([], $this->aiCalls->calls);
     }
 }

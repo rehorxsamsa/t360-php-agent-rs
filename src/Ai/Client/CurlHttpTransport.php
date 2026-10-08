@@ -10,6 +10,9 @@ namespace App\Ai\Client;
  */
 final readonly class CurlHttpTransport implements HttpTransport
 {
+    /** Kolik bajtů chybové odpovědi streamu se uchová (stačí na zprávu chyby, chrání paměť). */
+    private const int ERROR_BODY_LIMIT = 65536;
+
     public function __construct(
         private int $connectTimeoutSeconds = 5,
         private int $timeoutSeconds = 90,
@@ -17,13 +20,76 @@ final readonly class CurlHttpTransport implements HttpTransport
 
     public function post(string $url, #[\SensitiveParameter] array $headers, string $body): HttpResult
     {
+        /** @var array<string, string> $responseHeaders */
+        $responseHeaders = [];
+
+        $handle = $this->createHandle($url, $headers, $body, $responseHeaders);
+        curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
+
+        $responseBody = curl_exec($handle);
+        if ($responseBody === false || !is_string($responseBody)) {
+            throw $this->transportFailure($handle);
+        }
+
+        return new HttpResult((int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE), $responseHeaders, $responseBody);
+    }
+
+    public function stream(string $url, #[\SensitiveParameter] array $headers, string $body, callable $onChunk): HttpResult
+    {
+        /** @var array<string, string> $responseHeaders */
+        $responseHeaders = [];
+        $errorBody = '';
+        $stoppedByCallback = false;
+
+        $handle = $this->createHandle($url, $headers, $body, $responseHeaders);
+        curl_setopt($handle, CURLOPT_WRITEFUNCTION, static function (\CurlHandle $handle, string $data) use (
+            $onChunk,
+            &$errorBody,
+            &$stoppedByCallback,
+        ): int {
+            $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+            if ($status < 200 || $status >= 300) {
+                // Chybová odpověď se nestreamuje, jen se sesbírá, aby šla namapovat na typ chyby.
+                $errorBody .= substr($data, 0, max(0, self::ERROR_BODY_LIMIT - strlen($errorBody)));
+
+                return strlen($data);
+            }
+
+            if ($onChunk($data) === false) {
+                $stoppedByCallback = true;
+
+                // Menší návratová hodnota než strlen($data) přeruší přenos (CURLE_WRITE_ERROR).
+                return 0;
+            }
+
+            return strlen($data);
+        });
+
+        $ok = curl_exec($handle);
+        if ($ok === false && !($stoppedByCallback && curl_errno($handle) === CURLE_WRITE_ERROR)) {
+            throw $this->transportFailure($handle);
+        }
+
+        return new HttpResult((int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE), $responseHeaders, $errorBody);
+    }
+
+    /**
+     * Společné nastavení pro `post()` i `stream()`.
+     *
+     * @param array<string, string> $headers
+     * @param array<string, string> $responseHeaders naplní se názvy hlaviček malými písmeny
+     */
+    private function createHandle(
+        string $url,
+        #[\SensitiveParameter]
+        array $headers,
+        string $body,
+        array &$responseHeaders,
+    ): \CurlHandle {
         $headerLines = [];
         foreach ($headers as $name => $value) {
             $headerLines[] = $name . ': ' . $value;
         }
-
-        /** @var array<string, string> $responseHeaders */
-        $responseHeaders = [];
 
         $handle = curl_init($url);
         if ($handle === false) {
@@ -34,7 +100,6 @@ final readonly class CurlHttpTransport implements HttpTransport
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $body,
             CURLOPT_HTTPHEADER => $headerLines,
-            CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeoutSeconds,
             CURLOPT_TIMEOUT => $this->timeoutSeconds,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
@@ -52,17 +117,17 @@ final readonly class CurlHttpTransport implements HttpTransport
             },
         ]);
 
-        $responseBody = curl_exec($handle);
-        if ($responseBody === false || !is_string($responseBody)) {
-            $errorNumber = curl_errno($handle);
+        return $handle;
+    }
 
-            // Záměrně curl_strerror(), ne curl_error(): text neobsahuje URL ani data požadavku.
-            throw new TransportFailed(
-                sprintf('Chyba spojení (cURL %d): %s.', $errorNumber, curl_strerror($errorNumber) ?? 'neznámá chyba'),
-                $errorNumber === CURLE_OPERATION_TIMEDOUT,
-            );
-        }
+    private function transportFailure(\CurlHandle $handle): TransportFailed
+    {
+        $errorNumber = curl_errno($handle);
 
-        return new HttpResult((int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE), $responseHeaders, $responseBody);
+        // Záměrně curl_strerror(), ne curl_error(): text neobsahuje URL ani data požadavku.
+        return new TransportFailed(
+            sprintf('Chyba spojení (cURL %d): %s.', $errorNumber, curl_strerror($errorNumber) ?? 'neznámá chyba'),
+            $errorNumber === CURLE_OPERATION_TIMEDOUT,
+        );
     }
 }

@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace App\Ai\Examples;
 
-/** Přehled AI příkladů 01–05 (příklady 06–10 přibudou v M7). */
+/**
+ * Přehled AI příkladů. `all()`/`get()` vracejí jen „článkové“ příklady 01–05 (spouští je `ExampleRunner`),
+ * `listing()` všechny příklady 01–07 pro přehled v administraci (06 a 07 mají vlastní stránky a vstup).
+ */
 final readonly class ExampleRegistry
 {
     /** @var list<AiExample> */
     private array $examples;
+
+    /** @var list<ExampleDescription> */
+    private array $listing;
 
     public function __construct(
         Example01Excerpt $excerpt,
@@ -16,8 +22,17 @@ final readonly class ExampleRegistry
         Example03Classification $classification,
         Example04Review $review,
         Example05Translation $translation,
+        Example06WritingAssistant $writing,
+        Example07AskNewsroom $askNewsroom,
     ) {
         $this->examples = [$excerpt, $seo, $classification, $review, $translation];
+        $this->listing = [...$this->examples, $writing, $askNewsroom];
+    }
+
+    /** @return list<ExampleDescription> příklady 01–07 seřazené podle čísla */
+    public function listing(): array
+    {
+        return $this->listing;
     }
 
     /** @return list<AiExample> seřazené podle čísla */

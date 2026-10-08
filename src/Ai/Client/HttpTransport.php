@@ -17,4 +17,15 @@ interface HttpTransport
      * @throws TransportFailed spojení se nezdařilo nebo vypršel čas
      */
     public function post(string $url, #[\SensitiveParameter] array $headers, string $body): HttpResult;
+
+    /**
+     * Odešle POST a tělo úspěšné (2xx) odpovědi předává po kouscích do `$onChunk` (`HttpResult::$body` je pak
+     * prázdné). Odpověď s jiným stavem se nestreamuje: vrátí se celé tělo jako u `post()`, aby šla namapovat chyba.
+     * Vrátí-li callback `false`, přenos se ukončí a metoda se vrátí normálně (vyžádané ukončení není chyba).
+     *
+     * @param array<string, string> $headers
+     * @param callable(string): bool $onChunk
+     * @throws TransportFailed spojení se nezdařilo nebo vypršel čas
+     */
+    public function stream(string $url, #[\SensitiveParameter] array $headers, string $body, callable $onChunk): HttpResult;
 }

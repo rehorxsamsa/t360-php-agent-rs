@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Ai\Examples;
 use App\Ai\PromptData;
 use App\Tests\Unit\Support\AiFixtures;
 use PHPUnit\Framework\Attributes\DataProvider;
+use App\Tests\Unit\Support\MessageText;
 
 /**
  * Plán 006, AC 13 a tabulka §3: společný tvar požadavku všech příkladů (prompt ze souboru, článek
@@ -57,10 +58,10 @@ final class ExampleRequestContractTest extends ExampleTestCase
 
         self::assertCount(1, $request->messages);
         self::assertSame('user', $request->messages[0]['role']);
-        self::assertPrefix(PromptData::article($article), $request->messages[0]['content']);
+        self::assertPrefix(PromptData::article($article), MessageText::of($request->messages[0]['content']));
         self::assertGreaterThan(
             mb_strlen(PromptData::article($article)),
-            mb_strlen($request->messages[0]['content']),
+            mb_strlen(MessageText::of($request->messages[0]['content'])),
             'Za článkem musí následovat úkol.',
         );
 
@@ -89,7 +90,7 @@ final class ExampleRequestContractTest extends ExampleTestCase
         $this->runExample($id, null, $id === '05' ? AiFixtures::SONNET : '');
 
         $request = $this->lastRequest();
-        $everything = $request->system . "\n" . implode("\n", array_column($request->messages, 'content'));
+        $everything = $request->system . "\n" . implode("\n", MessageText::all($request->messages));
         self::assertStringNotContainsString(self::SECRET, $everything);
         self::assertStringNotContainsString('admin@example.cz', $everything);
         self::assertStringNotContainsString('ANTHROPIC_API_KEY', $everything);
@@ -106,7 +107,7 @@ final class ExampleRequestContractTest extends ExampleTestCase
 
         $this->runExample($id, $article, $id === '05' ? AiFixtures::SONNET : '');
 
-        $content = $this->lastRequest()->messages[0]['content'];
+        $content = MessageText::of($this->lastRequest()->messages[0]['content']);
         self::assertSame(1, substr_count($content, '</clanek>'), $content);
         self::assertStringContainsString('‹/clanek>', $content);
         self::assertStringContainsString('‹CLANEK>', $content);

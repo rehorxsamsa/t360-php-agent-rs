@@ -70,6 +70,7 @@ final class InMemoryAiCallRepository implements AiCallRepository
         string $model = 'claude-sonnet-5-5',
         string $provider = 'fake',
         int $durationMs = 12,
+        ?string $stopReason = null,
     ): AiCall {
         return new AiCall(
             createdAt: new \DateTimeImmutable($createdAt, new \DateTimeZone('Europe/Prague')),
@@ -83,7 +84,7 @@ final class InMemoryAiCallRepository implements AiCallRepository
             attempts: 1,
             status: $status,
             errorType: $errorType,
-            stopReason: $status === AiCallStatus::Ok ? 'end_turn' : null,
+            stopReason: $stopReason ?? ($status === AiCallStatus::Ok ? 'end_turn' : null),
             requestId: null,
         );
     }

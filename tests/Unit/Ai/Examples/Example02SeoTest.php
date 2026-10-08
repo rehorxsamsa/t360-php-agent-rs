@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Ai\Examples;
 use App\Ai\Examples\InvalidModelOutput;
 use App\Tests\Unit\Support\AiFixtures;
 use PHPUnit\Framework\Attributes\DataProvider;
+use App\Tests\Unit\Support\MessageText;
 
 /** Plán 006, AC 15: příklad 02 – SEO titulek, meta popis a klíčová slova (1 opakování). */
 final class Example02SeoTest extends ExampleTestCase
@@ -70,7 +71,7 @@ final class Example02SeoTest extends ExampleTestCase
         self::assertSame($initial[0], $retry[0]);
         self::assertSame(['role' => 'assistant', 'content' => $first], $retry[1]);
         self::assertSame('user', $retry[2]['role']);
-        self::assertStringContainsString('title: nejvýše 60 znaků', $retry[2]['content']);
+        self::assertStringContainsString('title: nejvýše 60 znaků', MessageText::of($retry[2]['content']));
         self::assertSame($this->llm->requests[0]->system, $this->llm->requests[1]->system);
 
         self::assertSame(2, $result->calls);

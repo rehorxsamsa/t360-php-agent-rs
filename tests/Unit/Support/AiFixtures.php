@@ -13,6 +13,7 @@ use App\Ai\LlmCallFailed;
 use App\Ai\LlmErrorType;
 use App\Ai\LlmRequest;
 use App\Ai\LlmResponse;
+use App\Ai\ToolCall;
 use App\Domain\Ai\TokenUsage;
 
 /**
@@ -68,6 +69,55 @@ final class AiFixtures
             requestId: $requestId,
             attempts: $attempts,
             costUsd: $costUsd,
+        );
+    }
+
+    /**
+     * Odpověď s voláním nástrojů (plán 008, AC 9): surový blok `thinking` (se signaturou), volitelně
+     * `text` a `tool_use` pro každé volání; `stop_reason 'tool_use'`. Spolu s `finalResponse()` jediné místo,
+     * které skládá LlmResponse s `content` a `toolCalls`.
+     *
+     * @param list<ToolCall> $calls
+     */
+    public static function toolUseResponse(
+        array $calls,
+        string $text = '',
+        int $input = 10,
+        int $output = 5,
+        ?float $costUsd = 0.0001,
+    ): LlmResponse {
+        $content = [['type' => 'thinking', 'thinking' => '', 'signature' => 'sig-' . count($calls)]];
+        if ($text !== '') {
+            $content[] = ['type' => 'text', 'text' => $text];
+        }
+        foreach ($calls as $call) {
+            $content[] = ['type' => 'tool_use', 'id' => $call->id, 'name' => $call->name, 'input' => $call->input];
+        }
+
+        return new LlmResponse(
+            text: $text,
+            model: self::SONNET,
+            stopReason: 'tool_use',
+            usage: new TokenUsage($input, $output),
+            provider: 'fake',
+            costUsd: $costUsd,
+            content: $content,
+            toolCalls: $calls,
+        );
+    }
+
+    /** Konečná odpověď smyčky (bez nástrojů) s blokem `text` v `content`. */
+    public static function finalResponse(string $text, string $stopReason = 'end_turn', ?float $costUsd = 0.0001): LlmResponse
+    {
+        return new LlmResponse(
+            text: $text,
+            model: self::SONNET,
+            stopReason: $stopReason,
+            usage: new TokenUsage(10, 5),
+            provider: 'fake',
+            costUsd: $costUsd,
+            content: $text === '' ? [] : [['type' => 'text', 'text' => $text]],
+            toolCalls: [],
         );
     }
 

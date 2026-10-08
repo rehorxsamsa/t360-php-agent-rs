@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Ai\Examples;
 
 use App\Ai\Examples\AiExample;
 use App\Ai\Examples\DemoArticles;
+use App\Ai\Examples\ExampleDescription;
 use App\Ai\Examples\ExampleRegistry;
 
 /** Plán 006, §2–3: registr příkladů 01–05 a ukázkové články. */
@@ -35,6 +36,32 @@ final class ExampleRegistryTest extends ExampleTestCase
             ],
             $titles,
         );
+    }
+
+    /** Plán 008, §3: přehled 01–07 (`listing()`), `all()` a `get()` zůstávají jen pro 01–05. */
+    public function test_listing_contains_examples_01_to_07_in_order(): void
+    {
+        $titles = [];
+        foreach ($this->registry()->listing() as $example) {
+            self::assertInstanceOf(ExampleDescription::class, $example);
+            self::assertNotSame('', trim($example->description()), $example->id());
+            $titles[$example->id()] = $example->title();
+        }
+
+        self::assertSame(
+            [
+                '01' => 'Perex na jedno kliknutí',
+                '02' => 'SEO titulek a meta popis',
+                '03' => 'Štítky a rubrika',
+                '04' => 'Kontrola před publikací',
+                '05' => 'Překlad CZ → EN',
+                '06' => 'Asistent psaní',
+                '07' => 'Zeptej se redakce',
+            ],
+            $titles,
+        );
+        self::assertCount(5, $this->registry()->all());
+        self::assertNull($this->registry()->get('07'));
     }
 
     public function test_get_requires_exact_id(): void
