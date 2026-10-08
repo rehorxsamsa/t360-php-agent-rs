@@ -85,3 +85,10 @@ Plán CI (`ci.yml`), původně slíbený jako 002, dostane číslo **009 nebo po
 - `.audit-table td { overflow-wrap: anywhere; }` v `public/assets/app.css` láme slova na 375 px; omezit na sloupec Shrnutí.
 - Výstup `make seed` „Nově vloženo – časy: N.“ je formulačně nepřesný (časy se dorovnávají).
 - Slovníček v tutoriálu: „GET formulář“ patří před „GHCR“; krok „Filtrovat“ v kapitole M8 zmiňuje adresu bez prázdných `od=&do=`.
+
+## Stav M7 (plán 008) — hotovo 2026-10-08
+Příklady 06 (streaming, přerušení) a 07 (tool use) jsou hotové, otestované (`make qa`, E2E v Playwrightu) a ověřené se
+skutečným Claude API (`claude-sonnet-5-5`; 06 ≈ 0,002–0,003 USD, 07 ≈ 0,015 USD, vrácení bloků `thinking` bez 400).
+Kapitola M7 je v `docs/tutorial.html`. Otevřené: úprava skillu `ai-integrace` a agenta `ai-inzenyr` (odkaz na ADR-0008,
+`stream()` v samostatném rozhraní, `fetch` + POST místo `EventSource`) — změna `.claude/`, čeká na souhlas člověka;
+backlog: fokus na „Přerušit“ po spuštění, rate limit pro `/admin/ai/06` a `/07`, Haiku 4.5 se blíží vyřazení (15. 10. 2026).
