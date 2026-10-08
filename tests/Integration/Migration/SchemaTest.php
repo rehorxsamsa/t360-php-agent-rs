@@ -83,7 +83,7 @@ final class SchemaTest extends TestCase
         );
         $byName = array_column($rows, null, 'TABLE_NAME');
 
-        foreach (['users', 'categories', 'tags', 'articles', 'article_tags', 'audit_log', 'ai_calls', 'migrations'] as $table) {
+        foreach (['users', 'categories', 'tags', 'articles', 'article_tags', 'audit_log', 'ai_calls', 'article_embeddings', 'migrations'] as $table) {
             self::assertArrayHasKey($table, $byName, $table);
             self::assertSame('InnoDB', $byName[$table]['ENGINE'], $table);
             self::assertSame('utf8mb4_czech_ci', $byName[$table]['TABLE_COLLATION'], $table);
@@ -155,7 +155,7 @@ final class SchemaTest extends TestCase
         self::assertSame(['migrations'], $tables);
         self::assertSame(0, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM migrations'));
 
-        self::assertCount(7, $this->migrator->migrate());
+        self::assertCount(8, $this->migrator->migrate());
     }
 
     // ---------------------------------------------------------------- plán 006, AC 20: ai_calls
@@ -247,7 +247,8 @@ final class SchemaTest extends TestCase
         self::assertNotNull($code);
     }
 
-    public function test_rolling_back_last_migration_drops_only_ai_calls(): void
+    /** Plán 009, AC 18 (záměrná regrese M6): poslední migrace je nově article_embeddings, ai_calls zůstává. */
+    public function test_rolling_back_last_migration_drops_only_article_embeddings(): void
     {
         $this->migrator->rollback(1);
 
@@ -255,12 +256,133 @@ final class SchemaTest extends TestCase
             $this->pdo,
             'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
         );
-        self::assertNotContains('ai_calls', $tables);
-        self::assertContains('audit_log', $tables);
+        self::assertNotContains('article_embeddings', $tables);
+        self::assertContains('ai_calls', $tables);
+        self::assertContains('articles', $tables);
         self::assertCount(1, $this->migrator->migrate());
-        self::assertContains('ai_calls', TestDatabase::column(
+        self::assertContains('article_embeddings', TestDatabase::column(
             $this->pdo,
             'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
         ));
+    }
+
+    public function test_rolling_back_two_migrations_drops_article_embeddings_and_ai_calls(): void
+    {
+        $this->migrator->rollback(2);
+
+        $tables = TestDatabase::column(
+            $this->pdo,
+            'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
+        );
+        self::assertNotContains('article_embeddings', $tables);
+        self::assertNotContains('ai_calls', $tables);
+        self::assertContains('audit_log', $tables);
+        self::assertCount(2, $this->migrator->migrate());
+    }
+
+    // ---------------------------------------------------------------- plán 009, AC 18: article_embeddings
+
+    private function vectorLiteral(int $hotIndex = 0): string
+    {
+        $values = array_fill(0, 768, 0.0);
+        $values[$hotIndex] = 1.0;
+
+        return json_encode($values, JSON_THROW_ON_ERROR);
+    }
+
+    private function insertEmbedding(int $articleId, string $model = 'fake-hash-768'): void
+    {
+        $statement = $this->pdo->prepare(
+            'INSERT INTO article_embeddings (article_id, model, source_hash, embedding, indexed_at) VALUES (?, ?, ?, VEC_FromText(?), ?)',
+        );
+        $statement->execute([$articleId, $model, str_repeat('a', 64), $this->vectorLiteral(), '2026-10-08 12:00:00.000000']);
+    }
+
+    public function test_article_embeddings_table_has_expected_columns(): void
+    {
+        $rows = TestDatabase::rows(
+            $this->pdo,
+            "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_KEY FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'article_embeddings' ORDER BY ORDINAL_POSITION",
+        );
+        $columns = array_column($rows, null, 'COLUMN_NAME');
+
+        self::assertSame(['article_id', 'model', 'source_hash', 'embedding', 'indexed_at'], array_keys($columns));
+        $expected = [
+            'article_id' => 'bigint(20) unsigned',
+            'model' => 'varchar(100)',
+            'source_hash' => 'char(64)',
+            'indexed_at' => 'datetime(6)',
+        ];
+        foreach ($expected as $name => $type) {
+            self::assertSame($type, $columns[$name]['COLUMN_TYPE'], $name);
+        }
+        self::assertStringContainsStringIgnoringCase('vector(768)', $columns['embedding']['COLUMN_TYPE']);
+        foreach (array_keys($columns) as $name) {
+            self::assertSame('NO', $columns[$name]['IS_NULLABLE'], $name);
+        }
+        self::assertContains($columns['indexed_at']['COLUMN_DEFAULT'], ['', 'NULL'], 'indexed_at nemá DEFAULT (ADR-0007).');
+        self::assertSame(
+            ['article_id'],
+            TestDatabase::column(
+                $this->pdo,
+                "SELECT COLUMN_NAME FROM information_schema.STATISTICS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'article_embeddings' AND INDEX_NAME = 'PRIMARY'
+                 ORDER BY SEQ_IN_INDEX",
+            ),
+        );
+    }
+
+    public function test_article_embeddings_has_vector_index_and_cascading_foreign_key(): void
+    {
+        self::assertSame(
+            ['embedding'],
+            TestDatabase::column(
+                $this->pdo,
+                "SELECT COLUMN_NAME FROM information_schema.STATISTICS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'article_embeddings'
+                   AND INDEX_NAME = 'idx_article_embeddings_embedding'",
+            ),
+        );
+
+        $constraints = TestDatabase::rows(
+            $this->pdo,
+            "SELECT REFERENCED_TABLE_NAME, DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS
+             WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'article_embeddings'
+               AND CONSTRAINT_NAME = 'fk_article_embeddings_article_id'",
+        );
+        self::assertSame([['REFERENCED_TABLE_NAME' => 'articles', 'DELETE_RULE' => 'CASCADE']], $constraints);
+    }
+
+    public function test_deleting_article_deletes_its_embedding(): void
+    {
+        $categoryId = $this->insertCategory();
+        $kept = $this->insertArticle($categoryId, 'zustava', 'published');
+        $deleted = $this->insertArticle($categoryId, 'mazany', 'published');
+        $this->insertEmbedding($kept);
+        $this->insertEmbedding($deleted);
+
+        $this->pdo->exec('DELETE FROM articles WHERE id = ' . $deleted);
+
+        self::assertSame(
+            [(string) $kept],
+            TestDatabase::column($this->pdo, 'SELECT article_id FROM article_embeddings'),
+        );
+    }
+
+    public function test_embedding_of_wrong_dimension_or_unknown_article_is_rejected(): void
+    {
+        $articleId = $this->insertArticle($this->insertCategory(), 'clanek', 'published');
+
+        $wrongDimension = $this->errorCodeOf(function () use ($articleId): void {
+            $statement = $this->pdo->prepare(
+                'INSERT INTO article_embeddings (article_id, model, source_hash, embedding, indexed_at) VALUES (?, ?, ?, VEC_FromText(?), ?)',
+            );
+            $statement->execute([$articleId, 'm', str_repeat('a', 64), '[1,0,0]', '2026-10-08 12:00:00']);
+        });
+        $unknownArticle = $this->errorCodeOf(fn() => $this->insertEmbedding($articleId + 1000));
+
+        self::assertNotNull($wrongDimension, 'VECTOR(768) nesmí přijmout 3 složky.');
+        self::assertSame(1452, $unknownArticle);
     }
 }
