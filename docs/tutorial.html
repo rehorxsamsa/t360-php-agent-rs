@@ -1438,7 +1438,7 @@ curl -s -X POST http://localhost:8080/admin/ai/01 -o /dev/null -w '%{http_code}'
       <li><strong>RAG</strong>: vyhledávání nad obsahem webu přes embeddingy (M7).</li>
       <li><strong>Agent</strong> s člověkem ve smyčce a <strong>MCP server</strong> redakce (M7).</li>
       <li><strong>Hromadné zpracování</strong> přes Message Batches API (backlog).</li>
-      <li><strong>Živý test se skutečným klíčem dělá člověk.</strong> Tento tutoriál ho neprovedl a skutečné API nevolal.
+      <li><strong>Živý test se skutečným klíčem dělá člověk.</strong> U příkladů 06 a 07 byl proveden (viz M7), u ostatních příkladů si ho můžeš zopakovat sám.
       Chceš-li ho zkusit, doplň do svého <code>.env</code> dvě řádky a restartuj prostředí:
       <pre><code>AI_PROVIDER=anthropic
 ANTHROPIC_API_KEY=tvůj-klíč</code></pre>
@@ -1781,7 +1781,7 @@ curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/admin/ai/06
     a dlouhých článcích několik desetin USD. Limit tokenů rezervuje <code>max_tokens</code> (1 024) před <em>každým</em> voláním,
     takže jedna otázka rezervuje až 5 × 1 024.</li>
   </ul>
-  <p>Jsou to odhady z podkladů, ne měření. Falešný klient počítá se stejným ceníkem, takže řádky v <code>ai_calls</code> vidíš i bez klíče.</p>
+  <p>Jsou to odhady z podkladů; živé měření na Sonnet 5.5 vyšlo pro 06 ≈ 0,002–0,003 USD a pro 07 ≈ 0,015 USD. Falešný klient počítá se stejným ceníkem, takže řádky v <code>ai_calls</code> vidíš i bez klíče.</p>
 
   <h3>Bezpečnost</h3>
   <ul>
@@ -1801,7 +1801,7 @@ curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/admin/ai/06
   jde přes <code>fetch</code> s <code>POST</code>. <code>ai-inzenyr</code> postavil parser, reader, streamovací klienta, nástroje
   a prompty, <code>programator</code> streamovanou <code>Response</code>, <code>SseWriter</code>, controllery a
   <code>ai-stream.js</code>. <code>tester</code> psal testy napřed se skriptovanými kousky proudu (bez sítě) a E2E scénáře
-  v <code>tests/E2E-scenare.md</code>. Živý test se skutečným klíčem tento tutoriál neprovedl; ověřeno je jen s falešným klientem.</p>
+  v <code>tests/E2E-scenare.md</code>. Živé ověření se skutečným Claude API (2026-10-08, <code>claude-sonnet-5-5</code>): 06 proudí po kouscích a přerušení se zaloguje jako <code>aborted</code> (cena ≈ 0,002–0,003 USD), 07 doběhl vŽivý test se skutečným klíčem tento tutoriál neprovedl; ověřeno je jen s falešným klientem.nbsp;3 krocích včetně vrácení bloků <code>thinking</code> bez chyby 400 (≈ 0,015 USD, vstup ≈ 5 960 / výstup ≈ 310 tokenů).</p>
 
   <h3>Vyzkoušej sám</h3>
   <ol class="kroky">
