@@ -15,5 +15,8 @@ takže testy AC 1–19 a 29 byly při prvním běhu rovnou zelené a RED zůstal
 RED doložit i tak (M8, 2026-10-04): `git archive HEAD | tar -x -C <scratchpad>/head`, zkopírovat `vendor/` a nové
 testy, pak `docker run --rm --network none -u 1000 -v <scratchpad>/head:/app -w /app t360-app vendor/bin/phpunit --testsuite Unit`
 – pracovní strom programátora zůstane netknutý, sdílená DB se nepoužije.
-Pozor: `TestCase::result()` je v PHPUnit 13 `final` (nepojmenovávat tak pomocníky); XML komentář nesmí obsahovat `--`.
+Pozor: `TestCase::result()` i `run()` jsou v PHPUnit 13 `final` (nepojmenovávat tak pomocníky); XML komentář nesmí obsahovat `--`.
+M7 (plán 008, 2026-10-04): T2+T3 hotové před T1 → AC 1–23, 32 zelené hned, RED jen HTTP (AC 24–31, chybí trasy → 404).
+Když T4 chybí úplně, RED se dokládá přímo v pracovním stromu (není třeba kopie HEAD). Helpery HTTP testů M7 jsou
+v `tests/Unit/Http/AdminAiM7TestCase.php`. Falešný proud 06: akce `zkrat` dá jen ~3 delty → měření bufferování (AC 34) přes `pokracuj`.
 Viz [[hook-curl-zavinac]].

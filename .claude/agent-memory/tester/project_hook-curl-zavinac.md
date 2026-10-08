@@ -23,6 +23,13 @@ klávesnicí jako MMDDRRRR. Počet SQL dotazů na požadavek: `performance_schem
 rozdíl `SHOW GLOBAL STATUS LIKE 'Com_select'` před/po jednom curl (šum +2 od healthchecku, opakovat 3×).
 HEAD na GET trasách vrací 405 (router HEAD nezná) → `curl -I` používat jen tam, kde se čeká 404/405.
 
+Režim B M7 (2026-10-08): admin cookie přes curl jde (GET login → cookie+_csrf, POST → nová cookie v Set-Cookie; heslo
+z README). Dotaz do DB bez čtení .env: `docker compose exec -T db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"
+"$MARIADB_DATABASE" -e "…"'` (MARIADB_USER v kontejneru není). Unit testy JS nepokrývají → E2E vždy projít celé
+(M7 odhalil `form.action` zastíněné polem `name="action"`); diagnostický obchvat `page.route(...).continue({url})`.
+Přihlášení admin@example.cz / dlouhe-heslo-12 (README) funguje. Negativní fetch (422/403) vždy zapíše do konzole
+„Failed to load resource …“ — to je hláška prohlížeče, ne chyba JS; „prázdná konzole“ posuzovat jen u šťastné cesty.
+
 **Why:** hook chrání před `curl -d @soubor` (exfiltrace souborů); kontroluje text příkazu, ne sémantiku.
 **How to apply:** úpravy `tests/E2E-scenare.md` dělat nástrojem Edit/Write, ne přes Bash; v curl příkladech psát
 zavináč jako `%40`, URL bez uvozovek. V režimu A s paralelním programátorem nespouštět integrační testy

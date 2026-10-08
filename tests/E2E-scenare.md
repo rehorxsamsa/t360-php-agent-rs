@@ -379,6 +379,117 @@ Snímky s absolutní cestou do `tests/_artefakty/`.
    každý `<form method="post">` má `csrf_field`.
 3. Regrese M5 (A7) a `/zdravi` → `200`.
 
+## AI příklady 06–07 (M7)
+
+Plán: `docs/plan/008-streaming-a-nastroje.md` (AC 32–37). Předpoklad: `make up`, `make migrate`, `make seed`, admin z P5,
+`AI_PROVIDER=falesny` (falešný klient v dev čeká 60 ms mezi deltami proudu). Pravidla hooku pro curl viz hlavička
+souboru (URL bez uvozovek a proměnných, `-o` jen `/dev/null`, cookie jen `-H 'Cookie: redakce_session=…'`).
+Playwright MCP: URL podle pravidla v hlavičce. Snímky s absolutní cestou do `tests/_artefakty/`.
+
+### S1: konzole (AC 32)
+1. `docker compose exec app php bin/konzole ai:priklad 06 --akce=zkrat` → kód `0`; první řádek
+   „Příklad 06 – Asistent psaní (akce: Zkrátit)“, pod ním text (při sledování terminálu přibývá po kouscích),
+   pak „Model claude-sonnet-5-5 · poskytovatel … · volání 1 · tokeny vstup N / výstup M · cena X USD“.
+2. `docker compose exec app php bin/konzole ai:priklad 06` (bez `--akce` = pokračovat, bez `--text` = ukázkový odstavec)
+   → kód `0`, „(akce: Pokračovat v textu)“, text navazuje na ukázkový odstavec.
+3. `docker compose exec app php bin/konzole ai:priklad 07 --otazka="Co redakce píše o Dockeru?"` → kód `0`; řádky
+   `Otázka: …`, `Odpověď: Podle článku „Docker pro vývojáře: proč na něm záleží“ (/clanek/docker-pro-vyvojare): …`,
+   `Krok 1 – hledej_clanky: …`, `Krok 2 – nacti_clanek: …`, `Zdroje: /clanek/docker-pro-vyvojare` a souhrn s „volání 3“.
+4. `… ai:priklad 07 --otazka="Co víte o kvasinkách?"` → „V publikovaných článcích jsem k tomu nic nenašel.“, „volání 2“,
+   `Zdroje: Žádné – odpověď nevychází z článků.`
+5. Negativní: `ai:priklad 08`, `ai:priklad 06 --akce=xyz`, `ai:priklad 01 --neco=1` → kód `1` a
+   „Použití: php bin/konzole ai:priklad 01–07 [--clanek=…] [--model=ID] [--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]“;
+   `ai:priklad 06 --text=` → kód `1`, „Zadejte text.“; `ai:priklad 07 --otazka=ab` → kód `1`, „Zadejte otázku (3–500 znaků).“
+6. MCP (`redakce_cteni`): `SELECT example_id, user_id, stop_reason FROM ai_calls ORDER BY id DESC LIMIT 6` → volání z konzole
+   mají `user_id NULL`.
+
+### S2: nepřihlášený, CSRF a chybné adresy (AC 33, curl)
+1. `curl -s -X POST http://localhost:8080/admin/ai/06/proud -o /dev/null -w '%{http_code}'` → `403` (bez session není
+   platný CSRF token; CSRF je před kontrolou přihlášení).
+2. `curl -s http://localhost:8080/admin/ai/07 -D - -o /dev/null` → `303`, `Location: /admin/prihlaseni`; totéž `/admin/ai/06`.
+3. `curl -s http://localhost:8080/admin/ai/06/proud -o /dev/null -w '%{http_code}'` (GET) → `405` (routing je před
+   přihlášením), `-D -` ukáže `Allow: POST`.
+4. Přihlásit se podle P2–P3 (e-mail v `-d` jako `admin%40example.cz`), z `curl -s http://localhost:8080/admin/ai/06
+   -H 'Cookie: redakce_session=<cookie>'` opsat `name="_csrf" value="…"`. S cookie:
+   - `…/admin/ai/08` → `404` „Stránka nenalezena“;
+   - `curl -s -X POST http://localhost:8080/admin/ai/06/proud -H 'Cookie: redakce_session=<cookie>' -d '_csrf=<token>&action=zkrat&text=' -D -`
+     → `422`, `Content-Type: application/json…`, tělo `{"error":"Zadejte text."}`; s `action=xyz&text=abc` → `{"error":"Vyberte akci."}`;
+   - totéž bez `_csrf` nebo s `_csrf=abc` → `403`;
+   - `curl -s -X POST http://localhost:8080/admin/ai/07 -H 'Cookie: redakce_session=<cookie>' -d '_csrf=<token>&question=ab'`
+     → `422`, tělo obsahuje `role="alert"` a „Zadejte otázku (3–500 znaků).“
+5. Žádná odpověď není `500`, žádné tělo neobsahuje `SQLSTATE` ani `Stack trace`.
+
+### S3: nebufferovaný proud (AC 34, curl; když cookie nejde získat, doložit v S4 krokem 3)
+1. S cookie a tokenem z S2:
+   `curl -s -X POST http://localhost:8080/admin/ai/06/proud -H 'Cookie: redakce_session=<cookie>' -d '_csrf=<token>&action=pokracuj&text=Redakce%20dnes%20spustila%20novy%20web.%20Ctenari%20jsou%20spokojeni.' -o /dev/null -w '%{time_starttransfer} %{time_total}\n'`
+   → `time_starttransfer` < 0,5 s a `time_total − time_starttransfer` ≥ 0,5 s.
+   Pozor: akce `zkrat` dá u krátkého textu jen ~3 delty (~0,12 s) — pro měření vždy `pokracuj` (pokračování má ~20 delt).
+   Při selhání je chyba v bufferování (PHP output buffer / nginx `fastcgi_buffering`), ne v testu → úkol `devops`.
+2. Totéž bez `-o /dev/null` a s `-D -`: hlavičky `200`, `Content-Type: text/event-stream; charset=utf-8`,
+   `Cache-Control: no-store` + bezpečnostní hlavičky z P2 (`X-Accel-Buffering` nginx klientovi nepředává – jeho absence
+   v odpovědi není chyba); tělo začíná `: start`, pak řádky `event: delta` / `data: {"text":"…"}` a končí
+   `event: done` s `data: {"stopReason":"end_turn","model":…,"provider":"fake","inputTokens":…,"outputTokens":…,"costUsd":…}`.
+3. Během běžícího proudu poslat z druhého terminálu `curl -s http://localhost:8080/admin -H 'Cookie: redakce_session=<cookie>' -o /dev/null -w '%{http_code} %{time_total}\n'`
+   → `200` a čas pod 0,5 s (session je uvolněná, proud nezamyká další požadavky).
+
+### S4: příklad 06 v prohlížeči (AC 35, Playwright + MCP)
+1. Přihlásit se (P4) → rozcestník → „AI nástroje“ → v přehledu odkazy „06 – Asistent psaní“ a „07 – Zeptej se redakce“
+   s popisy (kromě 01–05) → kliknout na „06 – Asistent psaní“.
+2. Stránka `/admin/ai/06`: nadpis „06 – Asistent psaní“, pole „Text“ s ukázkovým odstavcem, výběr akce (výchozí
+   „Pokračovat v textu“), tlačítka „Generovat“ a „Přerušit“ (neaktivní).
+3. „Generovat“ → během generování (např. `page.waitForFunction` na neprázdný `#ai-stream-output` a hned snímek) je
+   vidět částečný text a „Přerušit“ je aktivní; snímek `/home/q/projects/t360-php-agent-rs/tests/_artefakty/admin-ai-06-m7.png`.
+   Výstup v `#ai-stream-output` přibývá postupně (alespoň 2 různé délky textu v odstupu ~100 ms).
+4. Po dokončení: stav „Hotovo“, řádek s modelem, tokeny a cenou, „Přerušit“ opět neaktivní.
+5. Druhý běh (akce „Pokračovat v textu“) → po prvním kousku textu „Přerušit“ → stav „Přerušeno“, text přestane přibývat.
+   MCP: `SELECT example_id, stop_reason, status, output_tokens FROM ai_calls ORDER BY id DESC LIMIT 1` → `06`, `aborted`,
+   `ok`, `output_tokens > 0`. Přehled `/admin/ai` ukáže u tohoto volání stav „Přerušeno“.
+6. Chyba vstupu: vymazat text → „Generovat“ → hláška „Zadejte text.“ v `role="alert"`, žádný nový řádek v `ai_calls`.
+7. Vypršelý formulář: přes `browser_evaluate` změnit hodnotu skrytého `_csrf` → „Generovat“ → hláška „Formulář vypršel
+   nebo jste byli odhlášeni – obnovte stránku.“, žádný nový řádek v `ai_calls`.
+
+### S5: příklad 07 v prohlížeči (AC 35, Playwright + MCP)
+1. „AI nástroje“ → „07 – Zeptej se redakce“: nadpis, pole „Otázka“ s „Co redakce píše o Dockeru?“, tlačítko „Zeptat se“,
+   poznámka „Agent smí jen číst publikované články (nejvýše 5 kroků).“
+2. „Zeptat se“ → po přesměrování na `/admin/ai/07` blok „Výsledek“ s poli Otázka, Odpověď (obsahuje „Docker pro vývojáře:
+   proč na něm záleží“ a `/clanek/docker-pro-vyvojare`), „Krok 1 – hledej_clanky“, „Krok 2 – nacti_clanek“, Zdroje
+   `/clanek/docker-pro-vyvojare`; řádek „… · volání 3 · …“; otázka zůstane v poli. Snímek
+   `/home/q/projects/t360-php-agent-rs/tests/_artefakty/admin-ai-07-m7.png`.
+3. MCP: `SELECT example_id, stop_reason, status FROM ai_calls ORDER BY id DESC LIMIT 3` → tři řádky `07`
+   (`end_turn`, `tool_use`, `tool_use` – od nejnovějšího), všechny `ok`.
+4. Obnovení stránky (F5) → výsledek zmizí (PRG, zobrazí se jen jednou), žádné nové volání v `ai_calls`.
+5. Otázka „Co píšete o umělé inteligenci a konceptech?“ → odpověď ani kroky nikdy neobsahují „Druhý koncept“
+   ani `druhy-koncept` (koncepty, archiv a naplánované články nástroje nevidí).
+6. Otázka „ab“ → `422`, hláška „Zadejte otázku (3–500 znaků).“ v `role="alert"`, otázka zůstane v poli.
+
+### S6: escapování, klávesnice, konzole prohlížeče (AC 30, 35)
+1. Otázka `<img src=x onerror=alert(1)>` v 07 → ve výsledku vidět jako text, `page.on('dialog')` nic nezachytí.
+2. V 06 vložit text `<script>alert(1)</script> Druhá věta.` → „Generovat“ → výstup ukazuje značky jako text, žádný dialog.
+3. `grep -nE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval|new Function' public/assets/ai-stream.js` → nic.
+4. Klávesnice: na `/admin/ai/06` jen `Tab` na „Generovat“ → `Enter` spustí proud; `Tab` na „Přerušit“ → mezerník přeruší;
+   zaostřené prvky mají viditelný obrys. Na `/admin/ai/07` `Tab` na „Zeptat se“ → `Enter`.
+5. `browser_console_messages` (level `error`) prázdné na `/admin/ai`, `/admin/ai/06` (i během proudu a po přerušení)
+   a `/admin/ai/07` – žádná chyba CSP ani 404 `/assets/ai-stream.js`.
+6. Vypnutý JavaScript (nový kontext Playwrightu s `javaScriptEnabled: false`) → `/admin/ai/06` ukáže
+   „Asistent psaní potřebuje zapnutý JavaScript.“
+
+### S7: živé API (AC 36, jen člověk s klíčem, ne CI)
+1. Člověk nastaví v `.env` `AI_PROVIDER=anthropic` a klíč (agent `.env` nečte ani nemění), `make up`.
+2. Příklad 06 v prohlížeči streamuje skutečně po kouscích; „Přerušit“ → v `ai_calls` záznam `aborted`, `ok`, odhad výstupu.
+3. Příklad 07 nad seedem odpoví se zdroji `/clanek/…`; v `ai_calls` 2–5 řádků `07`.
+4. `docker compose exec app vendor/bin/phpunit --group live` → `AnthropicLiveTest` včetně krátkého proudu (`maxTokens 100`)
+   a jednoho tool use kroku projde.
+5. Vrátit `AI_PROVIDER=falesny`.
+
+### S8: kvalita a regrese (AC 37)
+1. `make qa` → kód `0`.
+2. `grep -rn 'curl_' src` → jen `src/Ai/Client/CurlHttpTransport.php`; `grep -rnE 'tool_choice|temperature|\beval\(|\bexec\(' src/Ai`
+   → jen komentáře (žádné použití).
+3. `grep -rnE 'connection_aborted|ignore_user_abort|flush\(' src` → jen `src/Http/Stream/PhpStreamOutput.php` a `src/Http/Response.php`;
+   `grep -rn session_write_close src` → jen `src/Infrastructure/Session/NativeSession.php`.
+4. `git diff --stat composer.json composer.lock compose.yaml docker/` prázdné (žádná nová závislost ani změna nginx).
+5. Regrese: I3 (příklad 01 v prohlížeči), U4, P4 a `curl -s http://localhost:8080/zdravi -w '\n%{http_code}\n'` → `200`.
+
 ## Audit log a opravy (M8)
 
 Plán: `docs/plan/007-audit-a-dokonceni.md` (AC 16–18, 25–28), časy podle `docs/adr/0007-casy-v-databazi-utc-vs-praha.md`

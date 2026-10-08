@@ -1,1 +1,2 @@
 - [Pasti prostředí (hook, cs-fixer)](feedback_prostredi-hook-a-cs-fixer.md) — Write místo heredocu, php skript přes stdin, nowdoc odsazení
+- [M7 streaming a tool use](project_m7-streaming-tooluse.md) — fallback StreamingLlmClient, zakázané literály, odchylka AC 11
