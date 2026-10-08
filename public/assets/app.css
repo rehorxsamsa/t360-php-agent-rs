@@ -385,6 +385,49 @@ form button.button-danger,
     font-size: 0.875rem;
 }
 
+/* AI příklad 06: živý výstup proudu (jen text, zalomení řádků zachovaná) a tlačítko „Přerušit“. */
+.ai-stream-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.button-secondary {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+
+button:disabled,
+.button-secondary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.ai-stream-status {
+    color: var(--muted);
+    font-size: 0.875rem;
+}
+
+.ai-stream-output {
+    min-height: 6rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: #f6f8fa;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-stream-output[aria-busy="true"] {
+    border-color: var(--muted);
+}
+
 /* Audit log: filtr vedle sebe, na úzkém displeji pod sebou; tabulka znovu .admin-table v .table-wrapper. */
 .audit-filter {
     display: flex;

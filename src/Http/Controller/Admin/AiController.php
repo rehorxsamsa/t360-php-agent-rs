@@ -56,7 +56,8 @@ final readonly class AiController
             'models' => $this->report->models(),
             'today' => $this->report->today(),
             'dailyLimit' => $this->report->dailyLimit(),
-            'examples' => $this->registry->all(),
+            // Přehled ukazuje všechny příklady 01–07; spouštění přes show/run jen 01–05 (06 a 07 mají vlastní controllery).
+            'examples' => $this->registry->listing(),
             'recentCalls' => $this->report->recent(),
             'csrfToken' => $this->csrf->token(),
         ]));

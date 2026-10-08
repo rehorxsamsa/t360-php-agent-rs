@@ -6,7 +6,7 @@
  * @var array{text: string, cheap: string} $models
  * @var \App\Domain\Ai\AiUsageTotals $today
  * @var int $dailyLimit
- * @var list<\App\Ai\Examples\AiExample> $examples
+ * @var list<\App\Ai\Examples\ExampleDescription> $examples příklady 01–07 (ExampleRegistry::listing())
  * @var list<\App\Domain\Ai\AiCall> $recentCalls
  * @var string $csrfToken
  */
@@ -57,7 +57,11 @@
             <td class="number"><?= e(czech_number($call->usage->output)) ?></td>
             <td class="number"><?= e(czech_number($call->costUsd, 6)) ?></td>
             <td class="number"><?= e(czech_number($call->durationMs)) ?></td>
-            <td><?= e($call->status === \App\Domain\Ai\AiCallStatus::Ok ? 'OK' : sprintf('Chyba (%s)', $call->errorType ?? 'neznámá')) ?></td>
+            <td><?= e(match (true) {
+                $call->status !== \App\Domain\Ai\AiCallStatus::Ok => sprintf('Chyba (%s)', $call->errorType ?? 'neznámá'),
+                $call->stopReason === 'aborted' => 'Přerušeno',
+                default => 'OK',
+            }) ?></td>
         </tr>
 <?php endforeach; ?>
     </tbody>

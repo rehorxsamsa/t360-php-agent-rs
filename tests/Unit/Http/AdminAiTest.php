@@ -399,7 +399,8 @@ final class AdminAiTest extends TestCase
     /** @return iterable<string, array{string, string}> */
     public static function missingExamples(): iterable
     {
-        foreach (['00', '06', '1', 'abc'] as $id) {
+        // Plán 008 (záměrná regrese M6): 06 a 07 už existují, neexistující je nově 08.
+        foreach (['00', '08', '1', 'abc'] as $id) {
             yield 'GET ' . $id => ['GET', '/admin/ai/' . $id];
             yield 'POST ' . $id => ['POST', '/admin/ai/' . $id];
         }
