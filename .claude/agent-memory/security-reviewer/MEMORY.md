@@ -1,1 +1,1 @@
-- [Opakované chyby týmu](project_opakovane-chyby-tymu.md) — make expanze/CLI_VARS, override soubory, allow = zápis, redirect mimo projekt; AI: chybí rate limit, dlouhé workflow, obchvat neutralize
+- [Opakované chyby týmu](project_opakovane-chyby-tymu.md) — make expanze/CLI_VARS, override soubory, allow = zápis; AI: rate limit, obchvat neutralize; MCP: local scope + allow php * = exfil

@@ -2,3 +2,4 @@
 - [M7 streaming a tool use](project_m7-streaming-tooluse.md) — fallback StreamingLlmClient, zakázané literály, odchylka AC 11
 - [M7b RAG příklad 08](project_m7b-rag-priklad-08.md) — rozhodnutí mimo AC, ověřená fakta Ollama/search_result, AC 35 nehotové
 - [M7c AI redaktor příklad 09](project_m7c-priklad-09.md) — štítky výsledku, zakázané řetězce v Editor/, živé ověření chybí
+- [M7d MCP server příklad 10](project_m7d-priklad-10-mcp.md) — fakta mcp/sdk 0.8.1 (STDIO, validace, PromptGetException), AC 13 odchylka

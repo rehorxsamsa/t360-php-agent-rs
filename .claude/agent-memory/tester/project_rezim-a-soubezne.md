@@ -28,4 +28,8 @@ zelené hned; RED v kopii HEAD doložen (chybí třídy Editor/Example09/SaveAiD
 PHPStan `level: max` běží i nad `tests/` → u dat z `json_decode`/fixtur s `mixed` používat pomocníky s `assertIsArray`/
 `assertIsString` (např. `at()`, `stringAt()`, `merged()`), ne přímé `$a['x']['y']`; closure v data provideru nemá phpdoc typ.
 Záměrné regrese mimo výčet plánu: `AdminAuditLogTest` (počet voleb filtru akcí je natvrdo) – hledat `assertCount(` u výčtů.
+M7d (plán 011, 2026-10-09): `TestCase::output()` je taky `final` (pomocník pojmenovat `consoleOutput()`).
+PHPStan nad testy proti ještě neexistujícím třídám: dočasné stuby podle signatur plánu do `var/phpstan-stubs/stubs.php`
++ `phpstan.neon` s `includes: ../../phpstan.neon.dist` a `scanFiles`, spustit `-c` a pak adresář smazat – zbydou jen
+skutečné chyby testů. Test „stránka nemá formulář“ musí nejdřív ověřit 200, jinak projde naprázdno na 404.
 Viz [[hook-curl-zavinac]].

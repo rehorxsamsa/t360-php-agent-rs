@@ -40,6 +40,11 @@ Desktop) → pomohlo `docker compose rm -sf web && docker compose up -d web`. Se
 (např. rubrika) v Playwrightu ověřovat přes `form.noValidate = true`, jinak `waitForNavigation` vyprší. „Zpět“ po PRG
 nevede na formulář → opakované odeslání simulovat vytvořeným formulářem s CSRF z aktuální stránky.
 
+Režim B M7d (2026-10-09): pole přihlášení jsou `email` a `password` (ne `heslo`) — s chybným jménem 422 a cookie
+neplatná. STDIO výstup MCP serveru přesměrovat do souborů ve scratchpadu (`>`/`2>` hook pustí, jen ne `curl -o`).
+Q3 regrese 09 bez vzniku dat: vygenerovat návrh a „Zahodit návrh“ (neukládat koncept → žádné mazání). Texty v dt/dd
+vrací `innerText` s `\n` místo „: “ — kontrolovat části zvlášť.
+
 **Why:** hook chrání před `curl -d @soubor` (exfiltrace souborů); kontroluje text příkazu, ne sémantiku.
 **How to apply:** úpravy `tests/E2E-scenare.md` dělat nástrojem Edit/Write, ne přes Bash; v curl příkladech psát
 zavináč jako `%40`, URL bez uvozovek. V režimu A s paralelním programátorem nespouštět integrační testy

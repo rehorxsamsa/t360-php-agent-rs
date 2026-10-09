@@ -59,6 +59,17 @@ Nalezeno při revizi M1 (plán 001, kola 1–3, 2026-10-03). Při další revizi
     session zamčená celou dobu (release() jen v 06), (c) `PromptData::neutralize` jde obejít `<`+U+200B
     (\p{Cf}), plnošířkovým `＜` U+FF1C a `&lt;` – ověřeno v kontejneru. Kontrolovat u každého nového příkladu.
 
+15. **MCP server redakce (revize plánu 011 / příklad 10, 2026-10-09)** – kód serveru čistý (SQL parametrizované, hranice
+    publikovaných OK, stdout čistý – ověřeno živou sondou přes `printf … | docker compose -f compose.yaml exec -T app php bin/konzole
+    mcp:server`, SDK validuje argumenty schématem PŘED handlerem). Přehlédnuté na úrovni NÁVRHU: (a) **„--scope local = ne v relacích
+    týmu“ je mylné** – local = všechny relace tohoto uživatele v adresáři projektu, tj. právě relace vedoucího s `acceptEdits`
+    a allow `Bash(docker compose exec -T app php *)` (= `php -r` s env klíčů + internet z kontejneru) a `mcp__context7` →
+    řetěz publikovaný článek → tool_result → auto-povolený Bash → exfiltrace ANTHROPIC_API_KEY. U každého nového kanálu
+    nedůvěryhodných dat do Claude Code porovnat s allow v `.claude/settings.json`. (b) `PromptData::neutralize` stále jde
+    obejít kombinujícími znaky (`<`+U+0338, U+034F uvnitř názvu značky), homoglyfy `˂` U+02C2, `〈` U+3008 a cyrilicí v názvu
+    značky – ověřeno. (c) grep testy hranic (`McpSourceRulesTest`) nemají `$_SERVER`/`putenv`/`ini_get`/`file_get_contents`.
+    (d) „líné PDO“ v plánech neplatí – kontejner ho vytvoří už při sestavení příkazu.
+
 **Why:** tým navrhuje pojistky jako prefix/regex filtry a výčty jmen souborů a přehlíží nepřímé cesty
 (expanze v make, alternativní názvy souborů, zápis z kontejneru, skill oprávnění).
 **How to apply:** u každé změny settings/hooků/Makefile/compose projít cesty „agent → host“
