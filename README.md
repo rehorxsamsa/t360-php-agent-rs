@@ -35,13 +35,13 @@ Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamov�
 | Oblast | Konkrétně |
 |---|---|
 | Poskytovatel | **Claude API (Anthropic) – Messages API**, hlavička `anthropic-version: 2023-06-01`; přepínač `AI_PROVIDER=falesny\|anthropic` |
-| Modely | `claude-sonnet-5-5` (generování textu, 2 / 10 USD za milion vstupních / výstupních tokenů), `claude-haiku-4-5-20251001` (levná klasifikace, 1 / 5 USD); ceník v `config/ai-models.php` |
+| Modely | `claude-sonnet-5-5` (generování textu, 2 / 10 USD za milion vstupních / výstupních tokenů), `claude-haiku-5-5` (levná klasifikace a překlad, 0,10 / 0,50 USD, zhruba 10× levnější než dřívější Haiku 4.5, který zůstává v katalogu jako legacy); ceník ověřený 2026-10-09 v `config/ai-models.php` |
 | Falešný klient | `FakeLlmClient` – všechny příklady i testy se dají spustit bez API klíče a bez sítě |
 | Rozhraní | `LlmClient` a `StreamingLlmClient`; dekorátor `MeteredLlmClient` měří tokeny a cenu |
 | Structured output | JSON podle schématu + validace v PHP a opakování s chybovou zprávou (`StructuredCall`) |
 | Tool use | agent s nástroji `hledej_clanky` a `nacti_clanek` (jen čtení), smyčka volání nástrojů |
 | Streaming | SSE (Server-Sent Events): `AnthropicStreamReader`, `SseParser`, `SseWriter`; text se zobrazuje průběžně |
-| Prompt caching | `cache_control: ephemeral` na systémovém promptu; cena zahrnuje zápis i čtení cache |
+| Prompt caching | `cache_control: ephemeral` na systémovém promptu; cena zahrnuje zápis i čtení cache (u Sonnet 5.5 čtení 0,10 USD za milion tokenů); u příkladu 03 se krátký prompt kolem hranice 512 tokenů uloží jen někdy |
 | Prompty | verzované Markdown soubory v `src/Ai/Prompts/` (role, pravidla, formát výstupu), načítá `PromptLibrary` |
 | Náklady | tabulka `ai_calls` (jen metadata: tokeny, cena, trvání, stav – nikdy texty), denní limit tokenů `AI_DENNI_LIMIT_TOKENU` |
 | Bezpečnost LLM | obsah článků i výstup modelu je nedůvěryhodný vstup (obrana proti prompt injection), validace a escapování výstupu, nástroje jen čtou |
@@ -170,7 +170,7 @@ přes falešný klient (`AI_PROVIDER=falesny`, nic se neúčtuje, cena je jen or
 ```bash
 docker compose exec -T app php bin/konzole ai:priklad 01
 docker compose exec -T app php bin/konzole ai:priklad 04 --clanek=demo-injection
-docker compose exec -T app php bin/konzole ai:priklad 05 --model=claude-haiku-4-5-20251001
+docker compose exec -T app php bin/konzole ai:priklad 05 --model=claude-haiku-5-5
 ```
 
 Volby: `--clanek=demo|demo-injection|ID` (výchozí `demo`), `--model=ID` (jen příklad 05). V prohlížeči
@@ -181,7 +181,7 @@ se přihlas jako admin a otevři `/admin/ai`. Proměnné v `.env` (výchozí hod
 | `AI_PROVIDER` | `falesny` (výchozí, bez sítě) nebo `anthropic` (skutečné Claude API) |
 | `ANTHROPIC_API_KEY` | klíč k API, potřebný jen pro `anthropic`; **jen v `.env`, nikdy v repozitáři** |
 | `AI_MODEL` | model pro generování textu (výchozí `claude-sonnet-5-5`) |
-| `AI_MODEL_LEVNY` | levnější model pro klasifikaci (výchozí `claude-haiku-4-5-20251001`) |
+| `AI_MODEL_LEVNY` | levnější model pro klasifikaci (výchozí `claude-haiku-5-5`) |
 | `AI_DENNI_LIMIT_TOKENU` | denní limit tokenů všech volání (výchozí `200000`) |
 
 Skutečné API zapneš tak, že do `.env` doplníš `AI_PROVIDER=anthropic` a `ANTHROPIC_API_KEY=…` a spustíš `make up`.

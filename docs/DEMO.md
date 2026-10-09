@@ -208,7 +208,7 @@ Controller / ai:priklad → ExampleRunner → Example01..07 → LlmClient (port)
 |---|---|---|---|
 | 01 | Perex | základní volání, `max_tokens`, cena | `Example01Excerpt`, `docs/ai-priklady/01.md` |
 | 02 | SEO titulek | structured output + validace + retry | `StructuredCall`, `FieldRules` |
-| 03 | Štítky a rubrika | klasifikace levným modelem (Haiku), `enum`, prompt caching | `Example03Classification` |
+| 03 | Štítky a rubrika | klasifikace levným modelem (Haiku 5.5, `effort` low, `max_tokens` 1000 kvůli přemýšlení), `enum`, prompt caching (u krátkého promptu se uloží jen někdy) | `Example03Classification` |
 | 04 | Kontrola před publikací | **prompt injection** (článek `demo-injection`) | prompt `04-review.md`, test obrany |
 | 05 | Překlad CZ → EN | porovnání modelů, zachování Markdownu | výběr modelu, ceník |
 | 06 | Asistent psaní | **streaming (SSE)**, přerušení klientem | `AnthropicStreamReader`, `SseParser`, `Response::stream` |
@@ -222,7 +222,7 @@ data, ne pokyny). Prompty se revidují v diffu jako text a mají číslo verze v
 
 | Téma | Řešení |
 |---|---|
-| Náklady | ceník v `config/ai-models.php` (Sonnet 5.5 za 2/10 USD, Haiku 4.5 za 1/5 USD na milion tokenů, cena cache), tabulka `ai_calls`, denní limit `AI_DENNI_LIMIT_TOKENU` |
+| Náklady | ceník v `config/ai-models.php` (Sonnet 5.5 za 2/10 USD, Haiku 5.5 za 0,10/0,50 USD, tedy zhruba 10× levněji než dřívější Haiku 4.5, na milion tokenů, čtení z cache Sonnet 5.5 za 0,10 USD), tabulka `ai_calls`, denní limit `AI_DENNI_LIMIT_TOKENU` |
 | Prompt injection | data odděleny značkami, nástroje jen pro čtení, ukázkový útok v příkladu 04 |
 | Nadměrná agentura | agent má jen dva čtecí nástroje, max. 5 kroků, 3 nástroje na krok, 60 s, výstup nástroje 8 000 znaků |
 | Zpracování výstupu | zobrazení přes `e()`, nic se neukládá, validace v PHP |

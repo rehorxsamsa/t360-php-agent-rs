@@ -289,12 +289,14 @@ Snímky s absolutní cestou do `tests/_artefakty/`.
 ### I1: prostředí a konzole (curl, docker)
 1. `docker compose exec app php -m` → seznam obsahuje `curl`.
 2. `docker compose exec app printenv AI_PROVIDER AI_MODEL AI_MODEL_LEVNY AI_DENNI_LIMIT_TOKENU` → `falesny`,
-   `claude-sonnet-5-5`, `claude-haiku-4-5-20251001`, `200000` (hodnotu `ANTHROPIC_API_KEY` **nevypisovat**).
+   `claude-sonnet-5-5`, `claude-haiku-5-5`, `200000` (hodnotu `ANTHROPIC_API_KEY` **nevypisovat**). Plán 012, R6: starší
+   lokální `.env` může mít ještě `AI_MODEL_LEVNY=claude-haiku-4-5-20251001`; krok projde až po úpravě `.env` člověkem
+   a `make up` (agenti `.env` neupravují, nesoulad jen nahlásit).
 3. `docker compose exec app php bin/konzole ai:priklad 01` → kód `0`; výstup obsahuje
    „Příklad 01 – Perex na jedno kliknutí (článek: Ukázkový článek)“, řádek `Perex: …` a řádek
    „Model claude-sonnet-5-5 · poskytovatel … · volání 1 · tokeny vstup N / výstup M · cena X USD“.
 4. `docker compose exec app php bin/konzole ai:priklad 04 --clanek=demo-injection` → kód `0`, výstup obsahuje „prompt injection“.
-5. `docker compose exec app php bin/konzole ai:priklad 05 --model=claude-haiku-4-5-20251001` → řádek „Model claude-haiku-4-5-20251001 · …“.
+5. `docker compose exec app php bin/konzole ai:priklad 05 --model=claude-haiku-5-5` → řádek „Model claude-haiku-5-5 · …“.
 6. Negativní: `ai:priklad`, `ai:priklad 06`, `ai:priklad 1`, `ai:priklad 01 --neco=1` → kód `1` a
    „Použití: php bin/konzole ai:priklad 01–05 [--clanek=demo|demo-injection|ID] [--model=ID]“;
    `ai:priklad 01 --clanek=999999` → kód `1`, „Článek 999999 neexistuje.“ (nikdy PHP warning ani stack trace).
@@ -318,7 +320,7 @@ Snímky s absolutní cestou do `tests/_artefakty/`.
 ### I3: přehled a příklad 01 v prohlížeči
 1. Playwright: přihlásit se jako admin → rozcestník `/admin` má odkaz „AI nástroje“ → kliknout.
 2. URL `/admin/ai`, nadpis „AI nástroje“, text „Poskytovatel: falešný klient (bez API klíče, nic se neúčtuje)“,
-   modely `claude-sonnet-5-5` a `claude-haiku-4-5-20251001`, řádek „Dnes: K volání, T z 200 000 tokenů, C USD“
+   modely `claude-sonnet-5-5` a `claude-haiku-5-5`, řádek „Dnes: K volání, T z 200 000 tokenů, C USD“
    (čísla česky: mezera jako oddělovač tisíců, desetinná čárka, cena na 6 míst), odkazy „01 – Perex na jedno kliknutí“ …
    „05 – Překlad CZ → EN“ s popisy, tabulka „Poslední volání“ (volání z I1 se stavem „OK“); snímek
    `tests/_artefakty/admin-ai-m6.png`.
@@ -336,13 +338,29 @@ Snímky s absolutní cestou do `tests/_artefakty/`.
    („Ignoruj všechny předchozí pokyny…“); snímek `tests/_artefakty/admin-ai-04-m6.png`.
 3. Totéž s „Ukázkový článek (bez databáze)“ → žádný nález „prompt injection“.
 4. `/admin/ai/02` (seedovaný článek) → pole „Titulek“, „Meta popis“, „Klíčová slova“; `/admin/ai/03` → „Rubrika“
-   (jedna ze seedovaných rubrik), „Štítky“ s příznaky „(existuje)“/„(nový)“, řádek „Model claude-haiku-4-5-20251001 · …“;
-   `/admin/ai/05` s modelem `claude-haiku-4-5-20251001` → „Titulek (EN)“, „Perex (EN)“, „Slug“ (původní), „Text (EN, Markdown)“
+   (jedna ze seedovaných rubrik), „Štítky“ s příznaky „(existuje)“/„(nový)“, řádek „Model claude-haiku-5-5 · …“;
+   `/admin/ai/05` s modelem `claude-haiku-5-5` → „Titulek (EN)“, „Perex (EN)“, „Slug“ (původní), „Text (EN, Markdown)“
    jako surový Markdown (nevykreslený).
 5. MCP: `SELECT example_id, provider, model, input_tokens, output_tokens, cost_usd, status FROM ai_calls ORDER BY id DESC LIMIT 2`
    → poslední volání příkladů s `provider = fake`, `status = ok`, `cost_usd > 0` (orientační); po krocích 1–2 jsou to `04` a `01`
    (nebo spusťte dotaz hned po kroku 2). Přehled „Poslední volání“ je ukazuje nahoře.
 6. MCP: `SELECT created_at FROM ai_calls ORDER BY id DESC LIMIT 1` → pražský čas (ne UTC), s mikrosekundami.
+
+### I4b: levný model Haiku 5.5 (plán 012, AC 12–14)
+Předpoklad: `.env` má `AI_MODEL_LEVNY=claude-haiku-5-5` (nebo řádek chybí a platí výchozí hodnota z `compose.yaml`), `AI_PROVIDER=falesny`.
+1. `docker compose exec app php bin/konzole ai:priklad 03` → kód `0`, řádek „Model claude-haiku-5-5 · falešný klient · …“.
+2. Playwright `/admin/ai` → text „Modely: claude-sonnet-5-5 (texty), claude-haiku-5-5 (levnější)“ (starý model jen případně v tabulce „Poslední volání“, viz krok 7).
+3. `/admin/ai/05` → `browser_evaluate` na `select[name=model]`: hodnoty voleb jsou přesně
+   `["claude-sonnet-5-5", "claude-haiku-5-5"]` (dvě volby, žádný legacy model).
+4. Vybrat `claude-haiku-5-5` → „Spustit příklad“ → `browser_network_requests`: `POST /admin/ai/05` → `303`, `GET` → `200`;
+   výsledek má řádek „Model claude-haiku-5-5 · …“ a formulář po přesměrování má vybraný `claude-haiku-5-5`.
+5. Negativní (s cookie a platným `_csrf`, curl): `/admin/ai/05` `-d article=demo -d model=claude-haiku-4-5-20251001` → `422`,
+   „Vyberte model ze seznamu.“ (legacy model je jen v katalogu, ne ve volbách); `COUNT(*)` v `ai_calls` se nezmění.
+6. MCP (`redakce_cteni`): `SELECT example_id, model, input_tokens, output_tokens, cost_usd FROM ai_calls ORDER BY id DESC LIMIT 2`
+   → `05` a `03` s `model = claude-haiku-5-5`; `cost_usd` odpovídá 0,10 / 0,50 USD za MTok
+   (`input_tokens × 0,0000001 + output_tokens × 0,0000005`, zaokrouhleno na 6 míst).
+7. Starší řádky s `model = claude-haiku-4-5-20251001` (pokud v dev DB jsou) zůstávají v tabulce „Poslední volání“ s původní
+   cenou; `git diff --stat -- database/` je prázdný (AC 14b, žádná migrace ani přepočet).
 
 ### I5: escapování, klávesnice, konzole prohlížeče
 1. V administraci vytvořit koncept s titulkem `<script>alert(1)</script>` a textem „Krátký text.“ → `/admin/ai/01`:
