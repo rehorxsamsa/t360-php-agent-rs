@@ -101,13 +101,14 @@ final class AiExampleCommandTest extends TestCase
         self::assertStringContainsString('prompt injection', $this->read($this->stdout));
     }
 
+    /** Plán 012, AC 12: levná varianta překladu běží na Haiku 5.5. */
     public function test_translation_with_cheap_model(): void
     {
-        $code = $this->runCommand(['ai:priklad', '05', '--model=claude-haiku-4-5-20251001']);
+        $code = $this->runCommand(['ai:priklad', '05', '--model=claude-haiku-5-5']);
 
         self::assertSame(0, $code, $this->allOutput());
-        self::assertMatchesRegularExpression('~^Model claude-haiku-4-5-20251001 · ~mu', $this->read($this->stdout));
-        self::assertSame('claude-haiku-4-5-20251001', $this->aiCalls->calls[0]->model ?? null);
+        self::assertMatchesRegularExpression('~^Model claude-haiku-5-5 · ~mu', $this->read($this->stdout));
+        self::assertSame('claude-haiku-5-5', $this->aiCalls->calls[0]->model ?? null);
     }
 
     public function test_article_from_database_by_id(): void

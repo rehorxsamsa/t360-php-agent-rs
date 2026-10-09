@@ -12,7 +12,7 @@ use App\Infrastructure\Config\MissingConfiguration;
 final readonly class AiConfig
 {
     public const string DEFAULT_MODEL = 'claude-sonnet-5-5';
-    public const string DEFAULT_CHEAP_MODEL = 'claude-haiku-4-5-20251001';
+    public const string DEFAULT_CHEAP_MODEL = 'claude-haiku-5-5';
     public const int DEFAULT_DAILY_TOKEN_LIMIT = 200000;
 
     public function __construct(

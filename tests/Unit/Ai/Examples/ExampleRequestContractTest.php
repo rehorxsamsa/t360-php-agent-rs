@@ -33,7 +33,8 @@ final class ExampleRequestContractTest extends ExampleTestCase
         // id, soubor promptu, model, maxTokens, má schéma, cacheSystem
         yield '01' => ['01', '01-excerpt.md', AiFixtures::SONNET, 400, false, false];
         yield '02' => ['02', '02-seo.md', AiFixtures::SONNET, 600, true, false];
-        yield '03' => ['03', '03-classification.md', AiFixtures::HAIKU, 500, true, true];
+        // 03: maxTokens 1000 (plán 012, otázka 2) – rezerva na přemýšlení Haiku 5.5, které se počítá do max_tokens.
+        yield '03' => ['03', '03-classification.md', AiFixtures::HAIKU, 1000, true, true];
         yield '04' => ['04', '04-review.md', AiFixtures::SONNET, 1500, true, false];
         yield '05' => ['05', '05-translation.md', AiFixtures::SONNET, 6000, true, false];
     }

@@ -10,7 +10,7 @@ use App\Infrastructure\Config\MissingConfiguration;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-/** Plán 006, AC 1: konfigurace AI z prostředí. */
+/** Plán 006, AC 1 a plán 012, AC 1: konfigurace AI z prostředí. */
 final class AiConfigTest extends TestCase
 {
     private const string SECRET = 'sk-ant-api03-tajny-klic-XYZ';
@@ -21,9 +21,16 @@ final class AiConfigTest extends TestCase
 
         self::assertSame(AiProvider::Fake, $config->provider);
         self::assertSame('claude-sonnet-5-5', $config->model);
-        self::assertSame('claude-haiku-4-5-20251001', $config->cheapModel);
+        self::assertSame('claude-haiku-5-5', $config->cheapModel);
         self::assertSame(200000, $config->dailyTokenLimit);
         self::assertSame('', $config->apiKey);
+    }
+
+    /** Plán 012, AC 1: výchozí levný model je Haiku 5.5. */
+    public function test_default_model_constants(): void
+    {
+        self::assertSame('claude-sonnet-5-5', AiConfig::DEFAULT_MODEL);
+        self::assertSame('claude-haiku-5-5', AiConfig::DEFAULT_CHEAP_MODEL);
     }
 
     public function test_falesny_provider_is_fake(): void
@@ -36,7 +43,7 @@ final class AiConfigTest extends TestCase
         $config = AiConfig::fromEnvironment([
             'AI_PROVIDER' => 'anthropic',
             'ANTHROPIC_API_KEY' => self::SECRET,
-            'AI_MODEL' => 'claude-haiku-4-5-20251001',
+            'AI_MODEL' => 'claude-haiku-5-5',
             'AI_MODEL_LEVNY' => 'claude-sonnet-5-5',
             'AI_DENNI_LIMIT_TOKENU' => '5000',
             'PATH' => '/usr/bin',
@@ -44,7 +51,7 @@ final class AiConfigTest extends TestCase
 
         self::assertSame(AiProvider::Anthropic, $config->provider);
         self::assertSame(self::SECRET, $config->apiKey);
-        self::assertSame('claude-haiku-4-5-20251001', $config->model);
+        self::assertSame('claude-haiku-5-5', $config->model);
         self::assertSame('claude-sonnet-5-5', $config->cheapModel);
         self::assertSame(5000, $config->dailyTokenLimit);
     }

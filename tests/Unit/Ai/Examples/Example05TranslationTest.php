@@ -85,6 +85,25 @@ final class Example05TranslationTest extends ExampleTestCase
         self::assertSame([], $this->llm->requests);
     }
 
+    /** Plán 012, AC 11: volby jsou Sonnet 5.5 a Haiku 5.5. */
+    public function test_model_choices_are_sonnet_and_haiku_5_5(): void
+    {
+        self::assertSame(['claude-sonnet-5-5', 'claude-haiku-5-5'], $this->example('05')->modelChoices());
+    }
+
+    /** Plán 012, AC 11: legacy Haiku 4.5 není nakonfigurovaný levný model, takže ho výběr odmítne bez volání LLM. */
+    public function test_legacy_haiku_is_rejected_without_calling_llm(): void
+    {
+        try {
+            $this->runExample('05', self::source(), AiFixtures::LEGACY_HAIKU);
+            self::fail('Očekávána výjimka InvalidExampleInput.');
+        } catch (InvalidExampleInput $exception) {
+            self::assertSame('Vyberte model ze seznamu.', $exception->getMessage());
+        }
+
+        self::assertSame([], $this->llm->requests);
+    }
+
     public function test_model_choices_are_offered_only_by_translation(): void
     {
         self::assertSame([AiFixtures::SONNET, AiFixtures::HAIKU], $this->example('05')->modelChoices());

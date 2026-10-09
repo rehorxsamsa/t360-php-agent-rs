@@ -23,7 +23,13 @@ use App\Domain\Ai\TokenUsage;
 final class AiFixtures
 {
     public const string SONNET = 'claude-sonnet-5-5';
-    public const string HAIKU = 'claude-haiku-4-5-20251001';
+    public const string HAIKU = 'claude-haiku-5-5';
+
+    /**
+     * Legacy levný model (plán 012): v katalogu zůstává jen pro starší `.env`, `effort` nezná.
+     * Jediné místo v testech, kde se ID objevuje (AC 16).
+     */
+    public const string LEGACY_HAIKU = 'claude-haiku-4-5-20251001';
 
     public static function root(): string
     {

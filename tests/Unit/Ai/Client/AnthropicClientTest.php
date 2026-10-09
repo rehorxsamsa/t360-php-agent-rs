@@ -173,14 +173,15 @@ final class AnthropicClientTest extends TestCase
         self::assertStringNotContainsString(self::KEY, $this->transport->requests[0]['body']);
     }
 
-    public function test_haiku_does_not_get_effort_so_output_config_is_omitted(): void
+    /** Plán 012, AC 9: legacy Haiku 4.5 `effort` nezná, takže `output_config` chybí úplně. */
+    public function test_legacy_haiku_does_not_get_effort_so_output_config_is_omitted(): void
     {
         $this->transport->push(self::ok());
 
-        $this->client()->complete(AiFixtures::request(model: AiFixtures::HAIKU, effort: 'low'));
+        $this->client()->complete(AiFixtures::request(model: AiFixtures::LEGACY_HAIKU, effort: 'low'));
 
         self::assertArrayNotHasKey('output_config', $this->sentBody());
-        self::assertSame(AiFixtures::HAIKU, $this->sentBody()['model']);
+        self::assertSame(AiFixtures::LEGACY_HAIKU, $this->sentBody()['model']);
     }
 
     public function test_request_without_effort_has_no_output_config(): void
@@ -215,16 +216,39 @@ final class AnthropicClientTest extends TestCase
         );
     }
 
-    public function test_json_schema_on_haiku_has_format_without_effort(): void
+    /** Plán 012, AC 9. */
+    public function test_json_schema_on_legacy_haiku_has_format_without_effort(): void
     {
         $this->transport->push(self::ok());
 
-        $this->client()->complete(AiFixtures::request(model: AiFixtures::HAIKU, jsonSchema: self::schema()));
+        $this->client()->complete(AiFixtures::request(model: AiFixtures::LEGACY_HAIKU, jsonSchema: self::schema()));
 
         self::assertSame(
             self::canonical(['format' => ['type' => 'json_schema', 'schema' => self::schema()]]),
             self::canonical($this->sentBody()['output_config'] ?? null),
         );
+    }
+
+    /**
+     * Plán 012, AC 8: Haiku 5.5 `effort` podporuje, takže dostane `effort` i `format`. Parametry, na které
+     * vrací 400 (`temperature`, `top_p`, `top_k`, `thinking`), ani `tool_choice` a `metadata` se neposílají.
+     */
+    public function test_haiku_5_5_gets_effort_and_json_schema_without_forbidden_parameters(): void
+    {
+        $this->transport->push(self::ok());
+
+        $this->client()->complete(AiFixtures::request(model: AiFixtures::HAIKU, effort: 'low', jsonSchema: self::schema()));
+
+        $body = $this->sentBody();
+        self::assertSame('claude-haiku-5-5', $body['model'] ?? null);
+        self::assertSame(
+            self::canonical(['effort' => 'low', 'format' => ['type' => 'json_schema', 'schema' => self::schema()]]),
+            self::canonical($body['output_config'] ?? null),
+        );
+        foreach (['temperature', 'top_p', 'top_k', 'thinking', 'tool_choice', 'metadata'] as $key) {
+            self::assertArrayNotHasKey($key, $body, $key);
+        }
+        self::assertStringContainsString('"model":"claude-haiku-5-5"', $this->transport->requests[0]['body']);
     }
 
     public function test_cache_system_sends_system_as_text_block_with_ephemeral_cache_control(): void

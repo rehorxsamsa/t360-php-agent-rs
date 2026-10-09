@@ -71,6 +71,19 @@ final class MeteredLlmClientTest extends TestCase
         self::assertSame('req_9', $call->requestId);
     }
 
+    /** Plán 012, AC 13: Haiku 5.5 (0,10 / 0,50 USD/MTok) → 1000 + 500 tokenů stojí 0,00035 USD. */
+    public function test_haiku_5_5_call_gets_cost_and_model_is_logged(): void
+    {
+        $this->inner->push(AiFixtures::response('Štítky.', input: 1000, output: 500, model: AiFixtures::HAIKU, costUsd: null));
+
+        $response = $this->client()->complete(AiFixtures::request(model: AiFixtures::HAIKU, exampleId: '03'));
+
+        self::assertSame(0.00035, $response->costUsd);
+        self::assertCount(1, $this->calls->calls);
+        self::assertSame('claude-haiku-5-5', $this->calls->calls[0]->model);
+        self::assertSame(0.00035, $this->calls->calls[0]->costUsd);
+    }
+
     public function test_console_call_is_logged_without_user(): void
     {
         $this->inner->push(AiFixtures::response('A'));

@@ -39,13 +39,16 @@ final class Example03ClassificationTest extends ExampleTestCase
         self::assertSame(['Zprávy', 'Technologie', 'Věda a výzkum'], $category['enum'] ?? null);
     }
 
+    /** Plán 012, AC 10: levný model Haiku 5.5, effort low, max_tokens 1000 a cache systémového promptu. */
     public function test_request_uses_cheap_model_and_cached_system_prompt(): void
     {
         $this->llm->pushText(self::classification());
 
         $this->runExample('03');
 
-        self::assertSame('claude-haiku-4-5-20251001', $this->lastRequest()->model);
+        self::assertSame('claude-haiku-5-5', $this->lastRequest()->model);
+        self::assertSame('low', $this->lastRequest()->effort);
+        self::assertSame(1000, $this->lastRequest()->maxTokens);
         self::assertTrue($this->lastRequest()->cacheSystem);
     }
 

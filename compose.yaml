@@ -29,7 +29,7 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-falesny}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-claude-sonnet-5-5}
-      AI_MODEL_LEVNY: ${AI_MODEL_LEVNY:-claude-haiku-4-5-20251001}
+      AI_MODEL_LEVNY: ${AI_MODEL_LEVNY:-claude-haiku-5-5}
       AI_DENNI_LIMIT_TOKENU: ${AI_DENNI_LIMIT_TOKENU:-200000}
       EMBED_PROVIDER: ${EMBED_PROVIDER:-falesny}
       EMBED_MODEL: ${EMBED_MODEL:-embeddinggemma}

@@ -85,14 +85,14 @@ final class ExampleResultStashTest extends TestCase
 
     public function test_form_choices_survive_redirect_with_result(): void
     {
-        $this->stash->put(self::sample('05'), '5', 'claude-haiku-4-5-20251001');
+        $this->stash->put(self::sample('05'), '5', 'claude-haiku-5-5');
 
         $pulled = $this->stash->pull('05');
 
         self::assertNotNull($pulled);
         self::assertSame('05', $pulled->result->exampleId);
         self::assertSame('5', $pulled->article);
-        self::assertSame('claude-haiku-4-5-20251001', $pulled->model);
+        self::assertSame('claude-haiku-5-5', $pulled->model);
     }
 
     public function test_choices_default_to_empty_strings(): void

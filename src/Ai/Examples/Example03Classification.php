@@ -17,7 +17,7 @@ use App\Domain\Tag\TagRepository;
 /** 03 – Štítky a rubrika: klasifikace levným modelem, `enum` rubrik ve schématu, `cacheSystem`. */
 final readonly class Example03Classification implements AiExample
 {
-    private const int MAX_TOKENS = 500;
+    private const int MAX_TOKENS = 1000;
 
     /** Kolik existujících štítků se nejvýše pošle modelu (kvůli ceně vstupu). */
     private const int MAX_KNOWN_TAGS = 100;

@@ -292,7 +292,7 @@ final class AdminAiTest extends TestCase
         self::assertStringContainsString('<h1>AI nástroje</h1>', $body);
         self::assertStringContainsString('Poskytovatel: falešný klient (bez API klíče, nic se neúčtuje)', $text);
         self::assertStringContainsString('claude-sonnet-5-5', $text);
-        self::assertStringContainsString('claude-haiku-4-5-20251001', $text);
+        self::assertStringContainsString('claude-haiku-5-5 (levnější)', $text);
         self::assertStringContainsString('Dnes: 2 volání, 1 234 z 200 000 tokenů, 0,007000 USD', $text);
 
         $titles = [
@@ -320,6 +320,27 @@ final class AdminAiTest extends TestCase
         // Řazení: nejnovější první.
         self::assertLessThan(strpos($text, '3. října 2026 08:00'), strpos($text, '3. října 2026 11:00'));
         self::assertLessThan(strpos($text, '2. října 2026 23:59'), strpos($text, '3. října 2026 08:00'));
+    }
+
+    /** Plán 012, AC 14b: starší řádek ai_calls s legacy Haiku 4.5 se ukáže s původním modelem a cenou, nic se nepřepočítává. */
+    public function test_overview_shows_legacy_haiku_call_with_original_model_and_cost(): void
+    {
+        $this->signIn();
+        $this->aiCalls->add(InMemoryAiCallRepository::call(
+            '2026-10-03 09:30:00',
+            new TokenUsage(400, 70),
+            0.000766,
+            exampleId: '03',
+            model: AiFixtures::LEGACY_HAIKU,
+        ));
+
+        $text = self::text($this->get('/admin/ai')->body);
+
+        self::assertStringContainsString(AiFixtures::LEGACY_HAIKU, $text);
+        self::assertStringContainsString('0,000766', $text);
+        self::assertCount(1, $this->aiCalls->calls);
+        self::assertSame(AiFixtures::LEGACY_HAIKU, $this->aiCalls->calls[0]->model);
+        self::assertSame(0.000766, $this->aiCalls->calls[0]->costUsd);
     }
 
     public function test_overview_without_calls_shows_message_and_zero_usage(): void
@@ -391,7 +412,7 @@ final class AdminAiTest extends TestCase
 
         self::assertStringContainsString('<h1>05 – Překlad CZ → EN</h1>', $body);
         self::assertSame(
-            ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'],
+            ['claude-sonnet-5-5', 'claude-haiku-5-5'],
             array_column(self::options($body, 'model'), 'value'),
         );
     }
@@ -478,10 +499,10 @@ final class AdminAiTest extends TestCase
     {
         $this->signIn();
 
-        $response = $this->post('/admin/ai/05', ['article' => 'demo', 'model' => 'claude-haiku-4-5-20251001']);
+        $response = $this->post('/admin/ai/05', ['article' => 'demo', 'model' => 'claude-haiku-5-5']);
 
         self::assertSame(303, $response->status);
-        self::assertSame('claude-haiku-4-5-20251001', $this->aiCalls->calls[0]->model ?? null);
+        self::assertSame('claude-haiku-5-5', $this->aiCalls->calls[0]->model ?? null);
     }
 
     public function test_translation_with_unknown_model_is_422(): void
@@ -509,7 +530,7 @@ final class AdminAiTest extends TestCase
     public static function malformedModels(): iterable
     {
         yield 'empty string' => [['model' => ''], []];
-        yield 'array model[]=x' => [[], ['model' => ['claude-haiku-4-5-20251001']]];
+        yield 'array model[]=x' => [[], ['model' => ['claude-haiku-5-5']]];
         yield 'empty array model[]' => [[], ['model' => []]];
     }
 
@@ -575,13 +596,13 @@ final class AdminAiTest extends TestCase
         $this->signIn();
         $this->addArticle5();
 
-        $response = $this->post('/admin/ai/05', ['article' => '5', 'model' => 'claude-haiku-4-5-20251001']);
+        $response = $this->post('/admin/ai/05', ['article' => '5', 'model' => 'claude-haiku-5-5']);
         self::assertSame(303, $response->status);
 
         $page = $this->get('/admin/ai/05')->body;
         self::assertStringContainsString('id="vysledek"', $page);
         self::assertSame('5', self::selected($page, 'article'));
-        self::assertSame('claude-haiku-4-5-20251001', self::selected($page, 'model'));
+        self::assertSame('claude-haiku-5-5', self::selected($page, 'model'));
 
         // Výsledek se zobrazí jen jednou; pak už formulář nabízí výchozí volby.
         $again = $this->get('/admin/ai/05')->body;
@@ -602,7 +623,7 @@ final class AdminAiTest extends TestCase
     {
         $this->signIn();
         $this->addArticle5();
-        self::assertSame(303, $this->post('/admin/ai/05', ['article' => '5', 'model' => 'claude-haiku-4-5-20251001'])->status);
+        self::assertSame(303, $this->post('/admin/ai/05', ['article' => '5', 'model' => 'claude-haiku-5-5'])->status);
 
         // Session je nedůvěryhodná: podvržené volby se neodrazí, formulář dostane výchozí hodnoty.
         $stored = json_decode((string) $this->session->data['ai_result'], true, 16, JSON_THROW_ON_ERROR);

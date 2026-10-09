@@ -228,7 +228,7 @@ final readonly class AnthropicClient implements StreamingLlmClient
         }
 
         $outputConfig = [];
-        // Haiku 4.5 `effort` nezná (API by vrátilo 400), proto se posílá jen podle katalogu.
+        // Model bez `supports_effort` (dnes legacy Haiku 4.5) `effort` nezná (API by vrátilo 400), proto se posílá jen podle katalogu.
         if ($request->effort !== null && $model->supportsEffort) {
             $outputConfig['effort'] = $request->effort;
         }
