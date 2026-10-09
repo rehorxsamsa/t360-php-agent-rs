@@ -124,4 +124,25 @@ final class CreateArticleTest extends TestCase
 
         self::assertNull($this->audit->entries[0]->ipAddress);
     }
+
+    // ---------------------------------------------------------------- plán 010, AC 17
+
+    public function test_audit_action_can_be_overridden_for_ai_draft(): void
+    {
+        $id = $this->service->handle(ArticleInputs::valid(), $this->admin, '172.18.0.1', AuditAction::ArticleAiDraftSaved);
+
+        self::assertCount(1, $this->audit->entries);
+        self::assertSame(AuditAction::ArticleAiDraftSaved, $this->audit->entries[0]->action);
+        self::assertSame($id, $this->audit->entries[0]->entityId);
+        self::assertSame('Nový článek [novy-clanek]', $this->audit->entries[0]->summary);
+    }
+
+    public function test_audit_action_parameter_defaults_to_article_created(): void
+    {
+        $parameter = new \ReflectionMethod(CreateArticle::class, 'handle')->getParameters()[3] ?? null;
+
+        self::assertNotNull($parameter, 'handle() má 4. parametr s akcí auditu.');
+        self::assertTrue($parameter->isDefaultValueAvailable());
+        self::assertSame(AuditAction::ArticleCreated, $parameter->getDefaultValue());
+    }
 }

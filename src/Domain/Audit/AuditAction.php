@@ -14,6 +14,7 @@ enum AuditAction: string
     case ArticleCreated = 'article.created';
     case ArticleUpdated = 'article.updated';
     case ArticleDeleted = 'article.deleted';
+    case ArticleAiDraftSaved = 'article.ai_draft_saved';
 
     /** Český popisek akce pro výpis audit logu a filtr. */
     public function label(): string
@@ -26,6 +27,7 @@ enum AuditAction: string
             self::ArticleCreated => 'Vytvoření článku',
             self::ArticleUpdated => 'Úprava článku',
             self::ArticleDeleted => 'Smazání článku',
+            self::ArticleAiDraftSaved => 'Uložení AI konceptu',
         };
     }
 }

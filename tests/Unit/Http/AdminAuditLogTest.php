@@ -370,7 +370,9 @@ final class AdminAuditLogTest extends TestCase
             $expected[] = ['value' => $action->value, 'text' => $action->label()];
         }
         self::assertSame($expected, array_map(static fn(array $o): array => ['value' => $o['value'], 'text' => $o['text']], $options));
-        self::assertCount(8, $options);
+        // Plán 010, AC 18 (záměrná regrese): „Všechny akce“ + 8 akcí včetně article.ai_draft_saved.
+        self::assertCount(9, $options);
+        self::assertContains(['value' => 'article.ai_draft_saved', 'text' => 'Uložení AI konceptu'], array_map(static fn(array $o): array => ['value' => $o['value'], 'text' => $o['text']], $options));
     }
 
     public function test_form_shows_current_filter(): void

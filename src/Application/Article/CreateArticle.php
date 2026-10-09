@@ -24,11 +24,16 @@ final readonly class CreateArticle
     ) {}
 
     /**
+     * @param AuditAction $auditAction akce zapsaná do auditu (AI koncept má vlastní, plán 010)
      * @return int ID nového článku
      * @throws InvalidArticleInput při chybách formuláře nebo souběžné kolizi slugu
      */
-    public function handle(ArticleInput $input, User $actor, ?string $ipAddress): int
-    {
+    public function handle(
+        ArticleInput $input,
+        User $actor,
+        ?string $ipAddress,
+        AuditAction $auditAction = AuditAction::ArticleCreated,
+    ): int {
         $data = $this->validator->validate($input);
         $data = $data->withSlug(Slug::uniqueAmong($data->slug, $this->articles->takenSlugs($data->slug, null)));
 
@@ -42,7 +47,7 @@ final readonly class CreateArticle
 
         // Audit až po úspěšném uložení, mimo transakci článku (plán 005, otázka 5).
         $this->audit->add(new AuditEntry(
-            AuditAction::ArticleCreated,
+            $auditAction,
             $actor->id,
             'article',
             $id,
