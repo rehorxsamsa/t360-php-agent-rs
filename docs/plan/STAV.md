@@ -22,6 +22,7 @@ Skutečnou hranicí je allowlist v `.claude/settings.json` (`permissions.allow`)
 Navrhnout ADR „Sandbox pro Bash nástroj Claude Code“ (omezení zápisu na adresář projektu, síťová allowlist,
 zákaz čtení `.env`/`~/.ssh` na úrovni OS). Sandbox řeší S3, S4, interpretery i `bash -c` u kořene – hooky by pak
 zůstaly jen pohodlnou první linií. Schvaluje člověk (mění architekturu pracovního prostředí).
+→ Navrženo v [ADR-0012](../adr/0012-sandbox-na-urovni-os.md) (stav: navrženo, čeká na schválení člověkem).
 
 ## Kolo 4 (hotovo)
 - Zúžený `allow` pro git, curl allowlist, jq/`git commit -F` kontroly, `.git*` chráněno, normalizace názvu
@@ -73,7 +74,7 @@ Plán CI (`ci.yml`), původně slíbený jako 002, dostane číslo **009 nebo po
 - **Drobnosti po 06/07:** asistent psaní ve formuláři článku; streaming kroků agenta 07; přeposílání `ping` jako SSE komentář;
   přesná usage při chybě uprostřed proudu; `strict: true` u nástrojů; poslední krok bez nástrojů; seskupení kroků v `ai_calls`
   (`run_id`); fulltext místo `LIKE` (s M4b); obnovení proudu po výpadku.
-- **Haiku 4.5** (`AI_MODEL_LEVNY`, příklady 03 a 05) má vyřazení „nejdříve 15. 10. 2026“ — sledovat a včas změnit model i katalog.
+- **Haiku 4.5** je od plánu 012 jen legacy záznam v katalogu (výchozí je Haiku 5.5). Vyřazení „nejdříve 15. 10. 2026“ zatím nebylo oznámeno (Anthropic slibuje aspoň 60 dní předem); po oznámení záznam z `config/ai-models.php` odstranit.
 
 ## Úkoly pro M9 (z plánu 007)
 - `SESSION_COOKIE_SECURE`: kontejner `app` `.env` nevidí a `compose.yaml` proměnnou nepředává; pro produkci ji předat v
@@ -91,7 +92,7 @@ Příklady 06 (streaming, přerušení) a 07 (tool use) jsou hotové, otestovan�
 skutečným Claude API (`claude-sonnet-5-5`; 06 ≈ 0,002–0,003 USD, 07 ≈ 0,015 USD, vrácení bloků `thinking` bez 400).
 Kapitola M7 je v `docs/tutorial.html`. Otevřené: úprava skillu `ai-integrace` a agenta `ai-inzenyr` (odkaz na ADR-0008,
 `stream()` v samostatném rozhraní, `fetch` + POST místo `EventSource`) — změna `.claude/`, čeká na souhlas člověka;
-backlog: fokus na „Přerušit“ po spuštění, rate limit pro `/admin/ai/06` a `/07`, Haiku 4.5 se blíží vyřazení (15. 10. 2026).
+backlog: fokus na „Přerušit“ po spuštění, rate limit pro `/admin/ai/06` a `/07`, výměna Haiku 4.5 → 5.5 hotová (plán 012).
 
 ## Stav M7c (plán 010) — příklad 09 hotový, čeká na schválení (Brána 2)
 Příklad 09 (AI redaktor, workflow s člověkem ve smyčce; ADR-0010) je implementovaný, `make qa` zelená (1718 testů),
@@ -100,7 +101,7 @@ E2E Q1–Q5 a Q7 prošly (Playwright + curl), bezpečnostní revize bez kritick�
 Otevřené:
 - **Rate limit AI tras** (nález 1, střední, LLM10) — udělat před zapnutím skutečného poskytovatele; platí i pro `/admin/ai/06`–`09`.
 - **Živý běh s reálným API (AC 30, Q6)** — jen člověk; cena ≈ 0,06 USD a doba 50–90 s jsou zatím odhad.
-- Cena cache read Sonnet 5.5 v `config/ai-models.php` (0,20 → 0,10 USD/MTok) — samostatný `fix(ai)`; Haiku 4.5 → 5.5 (vyřazení od 15. 10. 2026).
+- Cena cache read Sonnet 5.5 opravena na 0,10 USD/MTok a Haiku 4.5 → 5.5 (plán 012). Čeká: úprava `.env` člověkem (`AI_MODEL_LEVNY=claude-haiku-5-5`, pak `make up`) a živý běh AC 19.
 - **Příklad 10 (MCP server) = M7d**, vlastní plán, nová composer závislost = brána člověka. `AgentLoop` se nevyčleňuje (09 nástroje nepoužívá).
 - Testovací koncepty 47 a 48 v dev DB (a jejich audit) — smazání potřebuje souhlas člověka.
 
@@ -116,4 +117,4 @@ Otevřené:
   Ověřit také chování Claude Code po chybě `server/discover` bez `id` (SDK na STDIO era `2026-07-28` nenabízí); pojistka `MCP_PROTOCOL_NEGOTIATION=legacy`.
 - **S1 (střední, M9):** samostatná služba `mcp-redakce` s účtem `redakce_mcp` (jen `SELECT`), bez `ANTHROPIC_API_KEY` a `DB_MIGRACE_*`, `max_statement_time`.
 - **N1 (nízká):** `PromptData::neutralize` jde obejít homoglyfy a kombinujícími znaky (`˂`, `〈`, U+0338, U+034F, cyrilice); pro krátká témata allowlist.
-- Rate limit AI tras, živý běh příkladu 09, výměna Haiku 4.5 (od 15. 10. 2026), testovací koncepty 47 a 48 v dev DB (a ~170 řádků `ai_calls` z fake klienta).
+- Rate limit AI tras, živý běh příkladu 09, testovací koncepty 47 a 48 v dev DB (a ~170 řádků `ai_calls` z fake klienta).
