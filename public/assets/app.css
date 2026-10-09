@@ -398,6 +398,31 @@ form button.button-danger,
     margin-top: 0.75rem;
 }
 
+/* AI příklad 09: návrh ke schválení – blok výsledku, formulář „Uložit jako koncept“ a vedle něj „Zahodit návrh“. */
+.ai-proposal {
+    margin-top: 2rem;
+}
+
+.ai-proposal-decision {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0 1rem;
+    margin-top: 1.5rem;
+}
+
+.ai-proposal-save {
+    flex: 1 1 32rem;
+}
+
+.ai-proposal-discard {
+    flex: 0 0 auto;
+}
+
+ul.form-error {
+    padding-left: 1.25rem;
+}
+
 /* AI příklad 06: živý výstup proudu (jen text, zalomení řádků zachovaná) a tlačítko „Přerušit“. */
 .ai-stream-buttons {
     display: flex;

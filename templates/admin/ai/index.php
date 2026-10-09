@@ -6,7 +6,7 @@
  * @var array{text: string, cheap: string} $models
  * @var \App\Domain\Ai\AiUsageTotals $today
  * @var int $dailyLimit
- * @var list<\App\Ai\Examples\ExampleDescription> $examples příklady 01–08 (ExampleRegistry::listing())
+ * @var list<\App\Ai\Examples\ExampleDescription> $examples příklady 01–09 (ExampleRegistry::listing())
  * @var list<\App\Domain\Ai\AiCall> $recentCalls
  * @var string $csrfToken
  */

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controller\Admin\AiController;
+use App\Http\Controller\Admin\AiEditorController;
 use App\Http\Controller\Admin\ArticleController as AdminArticleController;
 use App\Http\Controller\Admin\AskNewsroomController;
 use App\Http\Controller\Admin\AuditLogController;
@@ -36,7 +37,7 @@ return static function (Router $router): void {
     $router->get('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'confirmDelete']);
     $router->post('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'delete']);
     $router->get('/admin/ai', [AiController::class, 'index']);
-    // Příklady 06–08 mají vlastní stránky; musí stát PŘED obecnou trasou /admin/ai/{example} (router bere první shodu).
+    // Příklady 06–09 mají vlastní stránky; musí stát PŘED obecnou trasou /admin/ai/{example} (router bere první shodu).
     $router->get('/admin/ai/06', [WritingAssistantController::class, 'show']);
     $router->post('/admin/ai/06/proud', [WritingAssistantController::class, 'stream']);
     $router->get('/admin/ai/07', [AskNewsroomController::class, 'show']);
@@ -44,6 +45,11 @@ return static function (Router $router): void {
     $router->get('/admin/ai/08', [SemanticSearchController::class, 'show']);
     $router->post('/admin/ai/08', [SemanticSearchController::class, 'ask']);
     $router->post('/admin/ai/08/indexace', [SemanticSearchController::class, 'reindex']);
+    // 09 – AI redaktor: návrh jen v session, jediný zápis (koncept) je POST /ulozit od admina (ADR-0010).
+    $router->get('/admin/ai/09', [AiEditorController::class, 'show']);
+    $router->post('/admin/ai/09', [AiEditorController::class, 'draft']);
+    $router->post('/admin/ai/09/ulozit', [AiEditorController::class, 'save']);
+    $router->post('/admin/ai/09/zahodit', [AiEditorController::class, 'discard']);
     $router->get('/admin/ai/{example}', [AiController::class, 'show']);
     $router->post('/admin/ai/{example}', [AiController::class, 'run']);
     $router->get('/admin/audit', [AuditLogController::class, 'index']);

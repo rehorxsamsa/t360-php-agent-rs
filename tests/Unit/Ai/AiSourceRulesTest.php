@@ -119,4 +119,86 @@ final class AiSourceRulesTest extends TestCase
             }
         }
     }
+
+    // ---------------------------------------------------------------- plán 010, AC 13 a 31 (grep část)
+
+    /** @return list<string> relativní cesty: příklad 09 a všechny třídy src/Ai/Editor */
+    private static function editorFiles(): array
+    {
+        $files = ['src/Ai/Examples/Example09AiEditor.php'];
+        foreach (glob(AiFixtures::root() . '/src/Ai/Editor/*.php') ?: [] as $file) {
+            $files[] = substr($file, strlen(AiFixtures::root()) + 1);
+        }
+
+        return $files;
+    }
+
+    public function test_ai_editor_has_no_path_to_writing(): void
+    {
+        $files = self::editorFiles();
+        self::assertGreaterThanOrEqual(9, count($files), 'Chybí příklad 09 nebo třídy src/Ai/Editor (8 souborů).');
+
+        foreach ($files as $file) {
+            self::assertFileExists(AiFixtures::root() . '/' . $file);
+            $source = (string) file_get_contents(AiFixtures::root() . '/' . $file);
+            foreach ([
+                'ArticleAdminRepository',
+                'ArticleRepository',
+                'CreateArticle',
+                'SaveAiDraft',
+                'AuditLogRepository',
+                'Session',
+                '\\PDO',
+                'PDO;',
+                'tools:',
+            ] as $forbidden) {
+                self::assertStringNotContainsString($forbidden, $source, $file . ': ' . $forbidden);
+            }
+        }
+    }
+
+    public function test_save_ai_draft_is_used_only_by_ai_editor_controller(): void
+    {
+        $users = array_values(array_diff(
+            self::filesContaining('src', 'SaveAiDraft'),
+            ['src/Application/Article/SaveAiDraft.php'],
+        ));
+
+        self::assertSame(['src/Http/Controller/Admin/AiEditorController.php'], $users);
+    }
+
+    public function test_new_files_of_plan_010_have_no_sql_and_no_czech_identifiers(): void
+    {
+        $files = [
+            ...self::editorFiles(),
+            'src/Application/Article/SaveAiDraft.php',
+            'src/Http/Session/AiDraftStash.php',
+            'src/Http/Controller/Admin/AiEditorController.php',
+        ];
+
+        foreach ($files as $file) {
+            self::assertFileExists(AiFixtures::root() . '/' . $file);
+            $source = (string) file_get_contents(AiFixtures::root() . '/' . $file);
+            self::assertDoesNotMatchRegularExpression('~\b(SELECT\s.+?\sFROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM)\b~s', $source, $file . ': SQL patří jen do *Repository.');
+            // Identifikátory (proměnné, funkce, třídy, konstanty, případy výčtu) jen ASCII (ADR-0003).
+            self::assertDoesNotMatchRegularExpression(
+                '~(\$|\bfunction\s+|\b(?:class|enum|interface|trait)\s+|\bconst\s+(?:\w+\s+)?|\bcase\s+)[A-Za-z_\x80-\x{10FFFF}]*[^\x00-\x7F]~u',
+                $source,
+                $file . ': české identifikátory',
+            );
+        }
+    }
+
+    public function test_every_post_form_in_ai_editor_template_has_csrf_field(): void
+    {
+        $path = AiFixtures::root() . '/templates/admin/ai/ai-editor.php';
+        self::assertFileExists($path);
+        $source = (string) file_get_contents($path);
+
+        preg_match_all('~<form\b[^>]*method="post"[^>]*>(.*?)</form>~su', $source, $forms);
+        self::assertGreaterThanOrEqual(3, count($forms[1]), 'Formuláře: návrh, uložení, zahození.');
+        foreach ($forms[1] as $index => $form) {
+            self::assertStringContainsString('csrf_field(', $form, sprintf('formulář %d bez csrf_field', $index));
+        }
+    }
 }
