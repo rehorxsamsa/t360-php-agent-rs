@@ -19,6 +19,7 @@ use App\Ai\Embedding\OllamaEmbeddingClient;
 use App\Ai\LlmClient;
 use App\Ai\PromptLibrary;
 use App\Ai\StreamingLlmClient;
+use App\Application\Ai\AiRateLimiter;
 use App\Console\Command\AiExampleCommand;
 use App\Console\Command\CreateAdminCommand;
 use App\Console\Command\IndexArticlesCommand;
@@ -30,6 +31,7 @@ use App\Console\Command\SeedCommand;
 use App\Console\ConsoleApplication;
 use App\Container\Container;
 use App\Domain\Ai\AiCallRepository;
+use App\Domain\Ai\AiRateLimitHitRepository;
 use App\Domain\Article\ArticleAdminRepository;
 use App\Domain\Article\ArticleEmbeddingRepository;
 use App\Domain\Article\ArticleRepository;
@@ -40,6 +42,7 @@ use App\Domain\Tag\TagRepository;
 use App\Domain\Time\Clock;
 use App\Domain\User\UserRepository;
 use App\Http\Middleware\AdminAccessMiddleware;
+use App\Http\Middleware\AiRateLimitMiddleware;
 use App\Http\Middleware\CsrfMiddleware;
 use App\Http\Middleware\ErrorHandlerMiddleware;
 use App\Http\Middleware\MiddlewarePipeline;
@@ -48,11 +51,13 @@ use App\Http\Middleware\SecurityHeadersMiddleware;
 use App\Http\Routing\Router;
 use App\Http\Session\Session;
 use App\Http\View\TemplateRenderer;
+use App\Infrastructure\Config\AiRateLimitConfig;
 use App\Infrastructure\Config\DatabaseConfig;
 use App\Infrastructure\Migration\Migrator;
 use App\Infrastructure\Migration\PdoMigrationRepository;
 use App\Infrastructure\Persistence\ConnectionFactory;
 use App\Infrastructure\Persistence\PdoAiCallRepository;
+use App\Infrastructure\Persistence\PdoAiRateLimitHitRepository;
 use App\Infrastructure\Persistence\PdoArticleAdminRepository;
 use App\Infrastructure\Persistence\PdoArticleEmbeddingRepository;
 use App\Infrastructure\Persistence\PdoArticleRepository;
@@ -129,6 +134,12 @@ $container->set(
     static fn(Container $c): AiCallRepository => new PdoAiCallRepository($c->get(\PDO::class)),
 );
 
+// Záznamy rate limitu AI tras (plán 013, ADR-0013).
+$container->set(
+    AiRateLimitHitRepository::class,
+    static fn(Container $c): AiRateLimitHitRepository => new PdoAiRateLimitHitRepository($c->get(\PDO::class)),
+);
+
 $container->set(Clock::class, static fn(): Clock => new SystemClock());
 
 // Session startuje líně; Secure cookie zapíná produkce proměnnou SESSION_COOKIE_SECURE=1 (dev běží přes HTTP).
@@ -159,6 +170,8 @@ $container->set(
         $c->get(RoutingMiddleware::class),
         $c->get(CsrfMiddleware::class),
         $c->get(AdminAccessMiddleware::class),
+        // Až za CSRF a přihlášením: limit AI tras nejde „vypálit“ cizím webem ani nepřihlášeným (ADR-0013).
+        $c->get(AiRateLimitMiddleware::class),
     ]),
 );
 
@@ -182,6 +195,25 @@ $container->set(
     AiConfig::class,
     static fn(): AiConfig => AiConfig::fromEnvironment(getenv()),
 );
+
+// Rate limit AI tras (plán 013): AI_LIMIT_POZADAVKU (běžné, 10/60) a AI_LIMIT_NAROCNYCH (09, 3/600) ve tvaru počet/sekundy.
+// Middleware je v řetězu pro každý požadavek, neplatná hodnota proto vrátí 500 všude (R6, výchozí hodnoty v compose.yaml).
+$container->set(
+    AiRateLimitConfig::class,
+    static fn(): AiRateLimitConfig => AiRateLimitConfig::fromEnvironment(getenv()),
+);
+
+$container->set(AiRateLimiter::class, static function (Container $c): AiRateLimiter {
+    $config = $c->get(AiRateLimitConfig::class);
+
+    return new AiRateLimiter(
+        $c->get(AiRateLimitHitRepository::class),
+        $c->get(AuditLogRepository::class),
+        $c->get(Clock::class),
+        $config->standard,
+        $config->heavy,
+    );
+});
 
 $container->set(
     ModelCatalog::class,

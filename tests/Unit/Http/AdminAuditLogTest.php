@@ -370,8 +370,10 @@ final class AdminAuditLogTest extends TestCase
             $expected[] = ['value' => $action->value, 'text' => $action->label()];
         }
         self::assertSame($expected, array_map(static fn(array $o): array => ['value' => $o['value'], 'text' => $o['text']], $options));
-        // Plán 010, AC 18 (záměrná regrese): „Všechny akce“ + 8 akcí včetně article.ai_draft_saved.
-        self::assertCount(9, $options);
+        // Plán 010, AC 18 a plán 013, AC 9 (záměrné regrese): „Všechny akce“ + 9 akcí včetně article.ai_draft_saved
+        // a ai.rate_limited.
+        self::assertCount(10, $options);
+        self::assertContains(['value' => 'ai.rate_limited', 'text' => 'Překročení limitu AI'], array_map(static fn(array $o): array => ['value' => $o['value'], 'text' => $o['text']], $options));
         self::assertContains(['value' => 'article.ai_draft_saved', 'text' => 'Uložení AI konceptu'], array_map(static fn(array $o): array => ['value' => $o['value'], 'text' => $o['text']], $options));
     }
 
@@ -398,6 +400,31 @@ final class AdminAuditLogTest extends TestCase
         self::assertSame(200, $response->status);
         self::assertStringContainsString('Počet záznamů: 1', self::text($response->body));
         self::assertSame(['2026-10-04T00:00:00+02:00'], self::rowTimes($response->body));
+    }
+
+    /** Plán 013, AC 9: filtr na odmítnutí rate limitem AI projde validací a ukáže jen tyto záznamy. */
+    public function test_action_filter_accepts_ai_rate_limited(): void
+    {
+        $audit = InMemoryAuditLogRepository::withContractRecords();
+        $audit->records[] = InMemoryAuditLogRepository::record(
+            6,
+            '2026-10-04 11:00:00',
+            'ai.rate_limited',
+            self::ADMIN_ID,
+            'Administrátor',
+            summary: 'Limit běžných AI požadavků 10 za 60 s: POST /admin/ai/01',
+        );
+        $this->boot($audit);
+        $this->signIn();
+
+        $response = $this->get('/admin/audit', ['akce' => 'ai.rate_limited']);
+
+        self::assertSame(200, $response->status);
+        $text = self::text($response->body);
+        self::assertStringContainsString('Počet záznamů: 1', $text);
+        self::assertStringContainsString('Překročení limitu AI', $text);
+        self::assertStringContainsString('Limit běžných AI požadavků 10 za 60 s: POST /admin/ai/01', $text);
+        self::assertSame(['2026-10-04T11:00:00+02:00'], self::rowTimes($response->body));
     }
 
     /** @return iterable<string, array{array<string, string>, list<string>}> */

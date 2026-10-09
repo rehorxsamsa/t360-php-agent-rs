@@ -21,7 +21,9 @@ use App\Domain\Category\CategoryRepository;
 use App\Domain\Tag\TagRepository;
 use App\Domain\Time\Clock;
 use App\Domain\User\UserRepository;
+use App\Domain\Ai\AiRateLimitHitRepository;
 use App\Http\Session\Session;
+use App\Infrastructure\Config\AiRateLimitConfig;
 
 /** Skutečný kompoziční kořen s náhradami (session, hodiny, všechny repozitáře v paměti, AI bez sítě). */
 final class TestContainer
@@ -41,11 +43,14 @@ final class TestContainer
         ?ScriptedHttpTransport $httpTransport = null,
         ?ArticleEmbeddingRepository $embeddings = null,
         ?EmbeddingClient $embeddingClient = null,
+        ?InMemoryAiRateLimitHitRepository $rateLimitHits = null,
+        ?AiRateLimitConfig $rateLimitConfig = null,
     ): Container {
         /** @var Container $container */
         $container = require __DIR__ . '/../../../config/container.php';
         self::replaceArticleDependencies($container, $articles, $clock, $adminArticles, $categories, $tags);
         self::replaceAiDependencies($container, $aiCalls, $llmClient, $aiConfig, $httpTransport, $embeddings, $embeddingClient);
+        self::replaceRateLimitDependencies($container, $rateLimitHits, $rateLimitConfig);
         $container->set(Session::class, static fn(): Session => $session);
         $container->set(UserRepository::class, static fn(): UserRepository => $users);
         $container->set(AuditLogRepository::class, static fn(): AuditLogRepository => $audit);
@@ -70,11 +75,14 @@ final class TestContainer
         ?ScriptedHttpTransport $httpTransport = null,
         ?ArticleEmbeddingRepository $embeddings = null,
         ?EmbeddingClient $embeddingClient = null,
+        ?InMemoryAiRateLimitHitRepository $rateLimitHits = null,
+        ?AiRateLimitConfig $rateLimitConfig = null,
     ): Container {
         /** @var Container $container */
         $container = require __DIR__ . '/../../../config/container.php';
         self::replaceArticleDependencies($container, $articles, $clock, $adminArticles, $categories, $tags);
         self::replaceAiDependencies($container, $aiCalls, $llmClient, $aiConfig, $httpTransport, $embeddings, $embeddingClient);
+        self::replaceRateLimitDependencies($container, $rateLimitHits, $rateLimitConfig);
         $container->set(UserRepository::class, static fn(): UserRepository => $users);
         $container->set(AuditLogRepository::class, static fn(): AuditLogRepository => $audit);
 
@@ -163,6 +171,29 @@ final class TestContainer
         $container->set(
             EmbeddingClient::class,
             static fn(): EmbeddingClient => $embeddingClient ?? new FakeEmbeddingClient(),
+        );
+        self::replaceRateLimitDependencies($container);
+    }
+
+    /**
+     * Plán 013: záznamy rate limitu AI se nahrazují **vždy** paměťovým dvojníkem (jinak by každý unit test přes Kernel
+     * sáhl do DB – middleware je v řetězu pro každý požadavek). Konfigurace limitů je výchozí produkční
+     * (`AiRateLimitConfig::fromEnvironment([])` = 10/60 a 3/600, nezávisle na prostředí kontejneru); testy limitu
+     * si předají nižší. Kontrakt pro config/container.php: `AiRateLimiter` se skládá z `AiRateLimitConfig::class`
+     * a `AiRateLimitHitRepository::class` z kontejneru. Vše líně, aby testy bez AI nenačítaly třídy limitu.
+     */
+    public static function replaceRateLimitDependencies(
+        Container $container,
+        ?InMemoryAiRateLimitHitRepository $hits = null,
+        ?AiRateLimitConfig $config = null,
+    ): void {
+        $container->set(
+            AiRateLimitHitRepository::class,
+            static fn(): AiRateLimitHitRepository => $hits ?? new InMemoryAiRateLimitHitRepository(),
+        );
+        $container->set(
+            AiRateLimitConfig::class,
+            static fn(): AiRateLimitConfig => $config ?? AiRateLimitConfig::fromEnvironment([]),
         );
     }
 }

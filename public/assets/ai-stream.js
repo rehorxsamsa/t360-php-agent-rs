@@ -187,7 +187,8 @@
 
     function handleFailedResponse(response) {
         var type = response.headers.get('Content-Type') || '';
-        if (response.status === 422 && type.indexOf('application/json') === 0) {
+        // 422 (neplatný vstup) i 429 (rate limit AI, plán 013) nesou JSON {"error": …} – zobrazí se hláška serveru.
+        if ((response.status === 422 || response.status === 429) && type.indexOf('application/json') === 0) {
             return response.json().then(function (data) {
                 showError(data && typeof data.error === 'string' ? data.error : CONNECTION_FAILED);
             }, function () {

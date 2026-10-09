@@ -31,6 +31,8 @@ services:
       AI_MODEL: ${AI_MODEL:-claude-sonnet-5-5}
       AI_MODEL_LEVNY: ${AI_MODEL_LEVNY:-claude-haiku-5-5}
       AI_DENNI_LIMIT_TOKENU: ${AI_DENNI_LIMIT_TOKENU:-200000}
+      AI_LIMIT_POZADAVKU: ${AI_LIMIT_POZADAVKU:-10/60}
+      AI_LIMIT_NAROCNYCH: ${AI_LIMIT_NAROCNYCH:-3/600}
       EMBED_PROVIDER: ${EMBED_PROVIDER:-falesny}
       EMBED_MODEL: ${EMBED_MODEL:-embeddinggemma}
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}

@@ -116,6 +116,12 @@ final class AuditLogSearchTest extends TestCase
         }
     }
 
+    /** Plán 013, AC 9. */
+    public function test_ai_rate_limited_action_is_accepted(): void
+    {
+        self::assertSame(AuditAction::AiRateLimited, $this->search->filter('ai.rate_limited', '', '')->action);
+    }
+
     public function test_unknown_action_is_invalid(): void
     {
         self::assertSame(['akce' => 'Vyberte akci ze seznamu.'], $this->errorsFor('xyz', '', ''));

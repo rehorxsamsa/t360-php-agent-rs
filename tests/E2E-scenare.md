@@ -882,3 +882,88 @@ Checklist pro člověka – výsledek a odchylky zapsat do `docs/ai-priklady/10.
 3. `grep -rn 'use Mcp\\' src` → jen `src/Mcp/NewsroomMcpServer.php`; `grep -rn 'proc_open\|tool_choice\|temperature' src/Ai` → nic.
 4. Regrese M7c: Q1 (konzole 09), Q3 (09 v prohlížeči), přehled `/admin/ai` s 01–10; `curl -s http://localhost:8080/zdravi
    -w '\n%{http_code}\n'` → `{"stav":"ok","db":"ok"}` a `200`.
+
+## Rate limit AI (plán 013)
+
+Plán: `docs/plan/013-rate-limit-ai-tras.md` (AC 25–27), ADR-0013. Předpoklad: `make up`, `make migrate`, `make seed`, admin z P5,
+`AI_PROVIDER=falesny`, **výchozí limity** (`AI_LIMIT_POZADAVKU=10/60`, `AI_LIMIT_NAROCNYCH=3/600`). Pravidla hooku pro curl a URL pro
+Playwright viz hlavička souboru. MCP dotazy přes `redakce_cteni`. Snímky s absolutní cestou do
+`/home/q/projects/t360-php-agent-rs/tests/_artefakty/`.
+
+> **Tento oddíl běží v sadě vždy POSLEDNÍ.** Vyčerpaný limit blokuje adminovi běžné AI akce na 60 s a AI redaktora (09) na 10 minut.
+> Před opakováním počkat, nebo dočasně zvýšit limit (L6). Žádný krok nemaže data.
+
+### L1: konfigurace a migrace (AC 4, 22)
+1. `docker compose exec -T app printenv AI_LIMIT_POZADAVKU AI_LIMIT_NAROCNYCH` → `10/60` a `3/600`.
+2. `docker compose exec app php bin/konzole migrace:stav` → migrace `202610090001_create_ai_rate_limit_hits_table` je provedená.
+3. MCP: `SHOW CREATE TABLE ai_rate_limit_hits` → sloupce `id`, `user_id`, `bucket VARCHAR(20)`, `created_at DATETIME(6) NOT NULL` bez
+   `DEFAULT`, index `idx_ai_rate_limit_hits_user_bucket_created (user_id, bucket, created_at)`, FK `fk_ai_rate_limit_hits_user_id` …
+   `ON DELETE CASCADE`. Zapsat výchozí `SELECT COUNT(*) FROM ai_rate_limit_hits`, `SELECT COUNT(*) FROM ai_calls` a
+   `SELECT MAX(id) FROM audit_log`.
+
+### L2: nepřihlášený a CSRF nespotřebují limit (AC 16, curl)
+1. `curl -s -X POST http://localhost:8080/admin/ai/01 -d 'article=demo' -o /dev/null -w '%{http_code}'` (bez session) → `403`.
+2. Přihlásit se podle P2–P3 (e-mail v `-d` jako `admin%40example.cz`), z `curl -s http://localhost:8080/admin/ai/01
+   -H 'Cookie: redakce_session=<cookie>'` opsat `name="_csrf" value="…"`.
+3. S cookie, ale bez `_csrf` a s `_csrf=abc`: `curl -s -X POST http://localhost:8080/admin/ai/01 -H 'Cookie: redakce_session=<cookie>'
+   -d 'article=demo&_csrf=abc' -o /dev/null -w '%{http_code}'` → `403`.
+4. S cookie a platným tokenem 20× `GET` na `/admin/ai/01`, `/admin/ai/09` a `/admin` → vše `200`.
+5. MCP: `SELECT COUNT(*) FROM ai_rate_limit_hits` beze změny proti L1.3 (CSRF, nepřihlášený ani GET nic nezapisují).
+
+### L3: 11 požadavků za minutu → 429 + Retry-After (AC 25, curl)
+1. S cookie a tokenem z L2 do 60 s 11× za sebou: `curl -s -i -X POST http://localhost:8080/admin/ai/01
+   -H 'Cookie: redakce_session=<cookie>' -d '_csrf=<token>&article=demo'` (stačí `| head -1` a řádek `Retry-After`).
+2. Očekávání: 1.–10. odpověď `HTTP/1.1 303 See Other` (`Location: /admin/ai/01`); 11. `HTTP/1.1 429 Too Many Requests` s řádky
+   `Retry-After: <číslo 1–60>`, `Cache-Control: no-store`, `Content-Type: text/html; charset=utf-8`; tělo obsahuje
+   „Příliš mnoho požadavků na AI: nejvýše 10 za 60 s. Zkuste to znovu za N s.“ (N = `Retry-After`) a odkaz `href="/admin/ai"`;
+   žádné `SQLSTATE`, `Stack trace` ani `500`.
+3. Hned 12. požadavek na jinou běžnou trasu (`-d '_csrf=<token>&question=Co+redakce+p%C3%AD%C5%A1e+o+Dockeru%3F'` na
+   `http://localhost:8080/admin/ai/07`) → také `429` (sdílený kbelík `ai`).
+4. MCP: `SELECT COUNT(*) FROM ai_rate_limit_hits` = L1.3 + 10 (odmítnutí se nezapisují), `SELECT bucket, COUNT(*) FROM ai_rate_limit_hits
+   GROUP BY bucket` → nové řádky jen `ai`; `SELECT COUNT(*) FROM ai_calls` = L1.3 + 10 (falešný klient se 11.–12. požadavkem nevolal);
+   `SELECT action, user_id, summary, ip_address FROM audit_log WHERE id > <L1.3> AND action = 'ai.rate_limited'` → 2 řádky
+   s ID admina, shrnutím „Limit běžných AI požadavků 10 za 60 s: POST /admin/ai/01“, resp. „… POST /admin/ai/07“ a IP.
+5. `curl -s http://localhost:8080/admin/audit?akce=ai.rate_limited -H 'Cookie: redakce_session=<cookie>'` → `200`, řádky s akcí
+   „Překročení limitu AI“ a shrnutím z kroku 4.
+6. Počkat `Retry-After` sekund (nebo 60 s) → stejný POST na `/admin/ai/01` vrátí znovu `303`.
+
+### L4: 06 v prohlížeči po vyčerpání limitu (AC 21, 25, Playwright)
+1. Hned po L3.2 (do 60 s, limit stále vyčerpaný; jinak L3.1 zopakovat): přihlásit se (P4), otevřít `http://web/admin/ai/06`.
+2. „Generovat“ (výchozí akce a text) → pole chyb (`id="ai-stream-error"`) se zobrazí s textem „Příliš mnoho požadavků na AI: nejvýše 10
+   za 60 s. Zkuste to znovu za N s.“, **ne** „Spojení selhalo“; výstup zůstane prázdný, tlačítko „Generovat“ je znovu aktivní.
+   Snímek `/home/q/projects/t360-php-agent-rs/tests/_artefakty/admin-ai-06-rate-limit.png`.
+3. Konzole prohlížeče: jen „Failed to load resource … 429“ (hláška prohlížeče), žádná chyba JS.
+4. Po uplynutí okna „Generovat“ znovu → proud doběhne jako v M7 (stav „Hotovo …“).
+5. Volitelně: `http://web/admin/ai/01` → „Spustit příklad“ při vyčerpaném limitu → stránka „Chyba 429“ s hláškou z L3.2 a odkazem zpět na
+   `/admin/ai`; snímek `…/tests/_artefakty/admin-ai-01-rate-limit.png`.
+
+### L5: AI redaktor (09) – náročný kbelík, uložení bez limitu (AC 13, 14; blokuje 09 na 10 minut)
+1. Prohlížeč (P4): `http://web/admin/ai/09` → 3× „Navrhnout koncept“ (vždy počkat na návrh) → všechny projdou; **nechat poslední návrh
+   na stránce**.
+2. 4. „Navrhnout koncept“ → stránka „Chyba 429“ „Příliš mnoho požadavků na AI: nejvýše 3 za 600 s. Zkuste to znovu za N s.“
+   (N ≤ 600) s odkazem zpět na `/admin/ai`. MCP: v `ai_calls` přibylo jen 12 řádků (3 běhy × 4 volání), 4. běh nic nevolal.
+3. Hned potom `http://web/admin/ai/07` → „Zeptat se“ → odpověď (`303` → výsledek), jiný kbelík.
+4. Zpět na `/admin/ai/09` → návrh z kroku 1 je stále na stránce → „Zahodit návrh“ → přesměrování s „Návrh byl zahozen.“ (zahození
+   se neomezuje). Uložení jako koncept se v E2E záměrně nezkouší (vznikl by článek a úklid = mazání dat); pokrývá ho unit test AC 14.
+5. MCP: `SELECT bucket, COUNT(*) FROM ai_rate_limit_hits WHERE created_at > NOW() - INTERVAL 15 MINUTE GROUP BY bucket` → `ai_heavy` = 3
+   (odmítnutí ani zahození nic nepřidaly); audit `ai.rate_limited` se shrnutím „Limit náročných AI požadavků (AI redaktor) 3 za 600 s:
+   POST /admin/ai/09“.
+
+### L6: přepsání limitu z prostředí (riziko R7)
+1. `AI_LIMIT_NAROCNYCH=20/600 docker compose up -d app` (proměnná shellu má přednost před `.env`) →
+   `docker compose exec -T app printenv AI_LIMIT_NAROCNYCH` → `20/600`; 5. „Navrhnout koncept“ v okně L5 projde.
+2. Neplatná hodnota: `AI_LIMIT_POZADAVKU=abc docker compose up -d app` → `curl -s http://localhost:8080/ -o /dev/null -w '%{http_code}'`
+   → `500` (R6, záměrně i veřejný web), `docker compose logs app` obsahuje „Proměnná prostředí AI_LIMIT_POZADAVKU má neplatný formát.“
+   a **neobsahuje** `abc`.
+3. Úklid: `docker compose up -d app` bez proměnných → `printenv` zase `10/60` a `3/600`, `/zdravi` → `200`.
+
+### L7: živě s Claude (AC 27, jen člověk s klíčem, volitelné)
+- [ ] S `AI_PROVIDER=anthropic` 4× „Navrhnout koncept“ na `/admin/ai/09` do 10 minut → 4. odmítnut stránkou 429; MCP: v `ai_calls`
+      nepřibyl žádný řádek za 4. pokus (náklad 0 USD), přehled nákladů `/admin/ai` se nezměnil.
+
+### L8: kvalita a regrese (AC 26)
+1. `make qa` → kód 0 (mimo jiné `AiRateLimitRoutesContractTest`: každá `POST /admin/ai…` trasa je v `LIMITED_HANDLERS` nebo
+   `EXEMPT_HANDLERS`; `RateLimitDefaultsConsistencyTest`: výchozí hodnoty v `compose.yaml` a `.env.example`).
+2. `git diff --stat -- src/Http/Controller` → prázdné (controllery se nemění); `grep -n 'AI_LIMIT_' README.md` → obě proměnné v tabulce.
+3. Regrese: L3 až L5 neprovádět před ostatními oddíly; po uplynutí oken Q3 (09) a M7 scénáře 06–08 projdou beze změny;
+   `curl -s http://localhost:8080/zdravi -w '\n%{http_code}\n'` → `{"stav":"ok","db":"ok"}` a `200`.
