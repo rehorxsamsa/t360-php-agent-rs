@@ -3,7 +3,7 @@
 > Udržuje agent `architekt`. Poslední aktualizace: 2026-10-08 (plány 001–004, M1–M4 — hotovo;
 > plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — hotovo;
 > plán 007 M8 audit log, opravy, tutoriál — implementováno; plán 008 M7 příklady 06–07 — hotovo;
-> plán 009 M7b příklad 08 RAG — návrh).
+> plán 009 M7b příklad 08 RAG — hotovo; plán 010 M7c příklad 09 AI redaktor — ke schválení).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -12,7 +12,8 @@
 > [ADR-0006](adr/0006-vlastni-llm-klient-curl.md) vlastní LLM klient přes cURL ·
 > [ADR-0007](adr/0007-casy-v-databazi-utc-vs-praha.md) časy v DB: UTC vs. Europe/Prague (navrženo) ·
 > [ADR-0008](adr/0008-streaming-a-nastroje-llm.md) streaming a tool use v LLM klientovi ·
-> [ADR-0009](adr/0009-semanticke-vyhledavani-embeddingy-a-citace.md) embeddingy (Ollama), MariaDB VECTOR a citace (navrženo).
+> [ADR-0009](adr/0009-semanticke-vyhledavani-embeddingy-a-citace.md) embeddingy (Ollama), MariaDB VECTOR a citace ·
+> [ADR-0010](adr/0010-ai-redaktor-workflow-se-schvalenim.md) AI redaktor: workflow bez nástrojů, uložení jen schválením admina (navrženo).
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -39,7 +40,7 @@ flowchart LR
         CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)<br/>ai:priklad (M6)"]
     end
     subgraph App["App\\Application — use-cases"]
-        UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)<br/>AuditLogSearch → AuditLogPage (M8)"]
+        UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)<br/>AuditLogSearch → AuditLogPage (M8)<br/>SaveAiDraft → CreateArticle (M7c, vždy koncept)"]
     end
     subgraph Dom["App\\Domain — entity, VO, rozhraní repozitářů"]
         I["rozhraní: DatabaseHealth (M1), UserRepository,<br/>AuditLogRepository (M3), ArticleRepository, Clock (M4)<br/>ArticleAdminRepository, CategoryRepository, TagRepository (M5)<br/>AiCallRepository + AiCall, TokenUsage (M6)<br/>AuditLogRepository::count/search, AuditLogFilter, AuditLogRecord (M8)<br/>ArticleEmbeddingRepository + Embedding, SimilarArticle (M7b)<br/>read modely ArticleSummary / ArticleDetail, Slug (M4)<br/>ArticleData, EditableArticle, AdminArticleSummary (M5)"]
@@ -53,7 +54,9 @@ flowchart LR
         L["LlmClient + StreamingLlmClient (porty, ADR-0008)<br/>= MeteredLlmClient (denní limit + log ai_calls)<br/>→ FakeLlmClient | AnthropicClient (SseParser)<br/>→ HttpTransport post / stream (CurlHttpTransport)"]
         TL["Tools (M7): hledej_clanky, nacti_clanek<br/>jen čtení publikovaných"]
         EM["Embedding (M7b, ADR-0009): EmbeddingClient (port)<br/>→ FakeEmbeddingClient | OllamaEmbeddingClient<br/>Rag: ArticleIndexer (ai:indexuj)<br/>Example08SemanticSearch (search_result + citace)"]
+        ED["Editor (M7c, ADR-0010): Example09AiEditor<br/>osnova → koncept → sebekontrola ⟲ přepracování<br/>StructuredCall, bez nástrojů, nic nezapisuje<br/>→ DraftProposal"]
         EX --> L
+        ED --> L
         EX --> TL
         EX --> EM
     end
@@ -68,6 +71,8 @@ flowchart LR
     R -.->|implementuje| I
     CA --> MG
     C -->|"M6: Admin\\AiController"| EX
+    C -->|"M7c: Admin\\AiEditorController::draft<br/>(návrh → AiDraftStash v session)"| ED
+    C -->|"M7c: ::save = jediný zápis, POST admina"| UC
     CA -->|"ai:priklad"| EX
     EX --> I
     L --> I
@@ -124,7 +129,7 @@ Příklad 07 (PRG jako 01–05) volá `LlmClient::complete()` v smyčce ≤ 5 kr
 (`App\Ai\Tools`, jen `ArticleRepository` = publikované); surové bloky odpovědi (vč. `thinking`) se vracejí nezměněné.
 Schéma DB se nemění (krok = řádek `ai_calls`).
 
-M7b (plán 009, **návrh**, ADR-0009) — příklad 08 (sémantické vyhledávání, RAG): `Admin\SemanticSearchController` / `ai:indexuj`
+M7b (plán 009, hotovo, ADR-0009) — příklad 08 (sémantické vyhledávání, RAG): `Admin\SemanticSearchController` / `ai:indexuj`
 → `ArticleIndexer` → `EmbeddingClient` (`FakeEmbeddingClient` bez sítě, nebo `OllamaEmbeddingClient` → Ollama `embeddinggemma`
 v profilu Compose `ai-local`, HTTP jen uvnitř sítě Dockeru) → `ArticleEmbeddingRepository::save` (tabulka `article_embeddings`,
 `VECTOR(768)` + HNSW index s kosinem). Dotaz: `Example08SemanticSearch` → `embedQuery` → `nearestPublished` (vnitřní poddotaz
@@ -132,6 +137,14 @@ přes vektorový index, **vnější** filtr „publikované a ne budoucí“ z `
 → `LlmClient::complete()` se zdroji jako bloky `search_result` → citace `search_result_location` ze surových bloků odpovědi,
 ověřené v PHP. Indexují se jen publikované články, změny pozná `source_hash` počítaný v SQL; use-cases administrace (M5) se nemění.
 Embeddingy se nelogují do `ai_calls` (lokálně zdarma), volání Claude ano.
+
+M7c (plán 010, **ke schválení**, ADR-0010) — příklad 09 (AI redaktor) je **workflow řízený kódem**, ne agent s nástroji:
+`Admin\AiEditorController::draft` → `Example09AiEditor` → 3–4 kroky `StructuredCall` nad `LlmClient` (osnova → koncept → sebekontrola
+→ nejvýše 1 přepracování v časovém rozpočtu); výstup kroku jde do dalšího jen jako data ve značkách `PromptData::block`. Výsledek
+(`DraftProposal`) se uloží jen do session (`Http\Session\AiDraftStash`) a zobrazí v editovatelném formuláři. **Jediný zápis** je
+`POST /admin/ai/09/ulozit` admina (CSRF) → `SaveAiDraft` (Application, vynutí `status = draft`, `published_at = NULL`) → `CreateArticle`
+(validace, slug, audit `article.ai_draft_saved`). `App\Ai` nezávisí na zápisových repozitářích ani use-cases (grep test); publikovat lze
+jen v běžné úpravě článku (M5). Schéma DB se nemění.
 
 M8 (plán 007, implementováno) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
 bez CSRF) → `AuditLogSearch` (Application: validace `akce`/`od`/`do`, 50 na stránku) → `AuditLogRepository::count` +
