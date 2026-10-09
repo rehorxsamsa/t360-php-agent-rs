@@ -1800,7 +1800,7 @@ curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/admin/ai/06
     Žádné <code>innerHTML</code>, žádný Markdown render.</li>
     <li><strong>LLM06 (nadměrná autonomie):</strong> žádné zapisovací nástroje, limit 5 kroků, 3 nástroje na krok, 60 s a 8 000 znaků na výsledek.</li>
     <li><strong>LLM10 (neomezená spotřeba):</strong> vstup do 5 000 znaků, <code>max_tokens</code>, denní limit, CSRF a jen admin.
-    <strong>Rate limit endpointů zatím chybí</strong> (backlog). Proud navíc drží PHP-FPM workera po celou dobu.</li>
+    rate limit na uživatele (429 + <code>Retry-After</code>, viz <a href="#bezpecnost">Bezpečnost v kódu</a>). Proud navíc drží PHP-FPM workera po celou dobu.</li>
   </ul>
 
   <h3>Jak to postavili agenti</h3>
@@ -2048,7 +2048,7 @@ Falešný klient: cena je jen orientační, nic se neúčtovalo.</code></pre>
     Citace jsou doslovné úseky zdroje, takže čtenář vidí, odkud tvrzení pochází.</li>
     <li><strong>LLM05:</strong> odpověď, citace i názvy článků se vypisují přes <code>e()</code>, značky <code>[n]</code> doplňuje PHP z ověřených citací.</li>
     <li><strong>LLM09 (dezinformace):</strong> citace ověřujeme strukturálně, ne obsahově (viz krok 7).</li>
-    <li><strong>LLM10:</strong> jedno volání modelu na dotaz, <code>max_tokens</code> 1 024, denní limit, otázka 3 až 500 znaků. <strong>Rate limit endpointu zatím chybí</strong> (backlog).</li>
+    <li><strong>LLM10:</strong> jedno volání modelu na dotaz, <code>max_tokens</code> 1 024, denní limit, otázka 3 až 500 znaků. rate limit na uživatele (kapitola <a href="#bezpecnost">Bezpečnost v kódu</a>).</li>
   </ul>
 
   <h3>Limity a co zlepšit</h3>
@@ -2256,7 +2256,7 @@ Přepracování: Ano – 1× podle sebekontroly.</code></pre>
     <li><strong>LLM01 (prompt injection):</strong> téma i výstupy kroků jsou data ve značkách, nikdy <code>system</code>, vložené značky se neutralizují.</li>
     <li><strong>LLM05:</strong> schéma, kontrola v PHP a jedno opakování. Návrh se ve formuláři vypisuje escapovaný, uložený text prochází sanitizujícím Markdown rendererem.</li>
     <li><strong>LLM09:</strong> tentýž model fakta neověří, UI na to upozorní.</li>
-    <li><strong>LLM10:</strong> <code>maxTokens</code> u každého kroku, denní limit, nejvýše 8 volání, časový rozpočet. <strong>Rate limit AI tras zatím chybí</strong> (backlog).</li>
+    <li><strong>LLM10:</strong> <code>maxTokens</code> u každého kroku, denní limit, nejvýše 8 volání, časový rozpočet. vlastní náročný rate limit 3 návrhy za 10 minut (kapitola <a href="#bezpecnost">Bezpečnost v kódu</a>); uložení a zahození návrhu se neomezují.</li>
   </ul>
 
   <h3>Jak to postavili agenti</h3>
@@ -2906,8 +2906,23 @@ $container->set(
     <li><strong>LLM02, únik dat:</strong> do <code>ai_calls</code> se ukládají jen metadata (model, tokeny, cena). Při skutečném volání ale text článku odchází k Anthropicu. Klíč je jen v <code>.env</code>.</li>
     <li><strong>LLM05, nedůvěryhodný výstup:</strong> JSON od modelu validuje PHP (<code>StructuredCall</code>, <code>FieldRules</code>), vypisuje se přes <code>e()</code> a nikam se neukládá.</li>
     <li><strong>LLM06, přílišná pravomoc:</strong> model nic nemění. Navrhuje text a člověk ho sám zkopíruje.</li>
-    <li><strong>LLM10, neomezená spotřeba:</strong> <code>max_tokens</code> u každého příkladu, limit délky vstupu a denní limit tokenů v <code>MeteredLlmClient</code>.</li>
+    <li><strong>LLM10, neomezená spotřeba:</strong> <code>max_tokens</code> u každého příkladu, limit délky vstupu a denní limit tokenů v <code>MeteredLlmClient</code> a rate limit na uživatele (oddíl níže).</li>
   </ul>
+
+  <h3>Rate limit AI (LLM10)</h3>
+  <p>Denní limit tokenů je společný pro všechny adminy. Jeden z nich (nebo ukradená session) ho proklikáním vyčerpá ostatním
+  a může spustit dávku souběžných drahých běhů. Proto každý AI požadavek počítáme na uživatele.</p>
+  <ul>
+    <li><strong>Klíč limitu je uživatel</strong> (<code>users.id</code>). Nové přihlášení vytvoří novou session a IP v Dockeru je u všech stejná, takže ani jedno by limit nespolehlivě drželo.</li>
+    <li><strong>Posuvné okno:</strong> aplikace spočítá záznamy z tabulky <code>ai_rate_limit_hits</code> novější než „teď minus okno“. Odmítnutý požadavek se nezapisuje, takže klikání okno neprodlužuje.</li>
+    <li><strong>Dva kbelíky:</strong> <code>ai</code> (příklady 01–08 včetně indexace 08) má výchozí <code>AI_LIMIT_POZADAVKU=10/60</code>, <code>ai_heavy</code> (jen návrh 09, 50–110 s a kolem 0,06 USD) má <code>AI_LIMIT_NAROCNYCH=3/600</code>. Formát je <code>počet/sekundy</code>.</li>
+    <li><strong>Výjimky:</strong> <code>POST /admin/ai/09/ulozit</code> a <code>/09/zahodit</code> nevolají model a zablokované uložení by zahodilo už zaplacený návrh.</li>
+    <li><strong>Při překročení:</strong> HTTP <strong>429</strong> s hlavičkou <code>Retry-After</code> (sekundy do uvolnění místa v okně). Příklad 06 vrací JSON <code>{"error": …}</code> ještě před začátkem proudu, ostatní česky psanou stránku. Každé odmítnutí je v audit logu jako akce <code>ai.rate_limited</code> (filtr na <code>/admin/audit</code>).</li>
+    <li><strong>Limit platí i pro falešného klienta.</strong> Je to stejná cesta kódu, takže 429 uvidíš i bez API klíče a bez peněz.</li>
+    <li><strong>Kde to běží:</strong> <code>AiRateLimitMiddleware</code> je v řetězu poslední, až za CSRF a kontrolou admina. Cizí web ani nepřihlášený tak adminovi limit „nevypálí“. Handlery se mapují v <code>LIMITED_HANDLERS</code> a <code>EXEMPT_HANDLERS</code> a kontraktní test selže, když nová AI trasa nemá rozhodnutí.</li>
+    <li><strong>Co se vědomě neřeší:</strong> souběh (z N paralelních session lze limit překročit o N−1; tvrdou pojistkou zůstává denní limit tokenů), úklid starých řádků, omezení CLI a MCP serveru a omezení pokusů o přihlášení. Do limitu se počítá i požadavek, který skončí chybou 422.</li>
+  </ul>
+  <p>Při opakovaném ručním zkoušení příkladu 09 limit zvyš: <code>AI_LIMIT_NAROCNYCH=20/600 make up</code>.</p>
 
   <h3>Docker a vývoj s agenty</h3>
   <ul>
@@ -2928,7 +2943,6 @@ $container->set(
       <tr><td>Timeouty session</td><td>Session žije do zavření prohlížeče. Zapomenuté přihlášení na cizím počítači neskončí samo.</td></tr>
       <tr><td><code>Secure</code> cookie a prefix <code>__Host-</code> (M9)</td><td>Bez HTTPS by šla cookie zachytit v síti. Dev běží přes HTTP, <code>Secure</code> se zapíná proměnnou <code>SESSION_COOKIE_SECURE=1</code> až v produkčním compose.</td></tr>
       <tr><td>CSP s nonce</td><td>Není potřeba, dokud aplikace nemá inline skripty. Jakmile nějaký přibude, statická CSP ho zablokuje a bude nutné nonce zavést.</td></tr>
-      <tr><td>Rate limit AI endpointů</td><td>Přihlášený admin může spouštět příklady donekonečna. Kryje to jen denní limit tokenů.</td></tr>
       <tr><td>Bezpečnostní revize (<code>security-reviewer</code>) od milníku M2</td><td>Nálezy, které by revize našla, jsme nehledali. Tento tutoriál není auditovaný.</td></tr>
       <tr><td>Sandbox Claude Code</td><td>Agent běží s právy uživatele a chrání nás jen hooky, oprávnění a Docker.</td></tr>
       <tr><td>Digesty Docker obrazů</td><td>Obrazy jsou připnuté verzí, ne otiskem. Stejný tag může někdo přepsat.</td></tr>
@@ -2954,6 +2968,7 @@ $container->set(
 
   <dl class="slovnicek">
     <dt>CSP</dt><dd>Content-Security-Policy: hlavička, která prohlížeči říká, odkud smí stránka načítat skripty, styly a obrázky.</dd>
+    <dt>Rate limit</dt><dd>Omezení počtu požadavků za časové okno. Tady na uživatele a kbelík (<code>ai</code>, <code>ai_heavy</code>); při překročení HTTP 429 a hlavička <code>Retry-After</code>.</dd>
     <dt>XSS</dt><dd>Cross-site scripting: do stránky se dostane cizí skript, protože se text vypsal bez escapování.</dd>
   </dl>
   <!-- AGENT: kapitola bezpečnost -->

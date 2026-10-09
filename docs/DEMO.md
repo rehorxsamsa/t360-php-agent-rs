@@ -222,7 +222,7 @@ data, ne pokyny). Prompty se revidují v diffu jako text a mají číslo verze v
 
 | Téma | Řešení |
 |---|---|
-| Náklady | ceník v `config/ai-models.php` (Sonnet 5.5 za 2/10 USD, Haiku 5.5 za 0,10/0,50 USD, tedy zhruba 10× levněji než dřívější Haiku 4.5, na milion tokenů, čtení z cache Sonnet 5.5 za 0,10 USD), tabulka `ai_calls`, denní limit `AI_DENNI_LIMIT_TOKENU` |
+| Náklady | ceník v `config/ai-models.php` (Sonnet 5.5 za 2/10 USD, Haiku 5.5 za 0,10/0,50 USD, tedy zhruba 10× levněji než dřívější Haiku 4.5, na milion tokenů, čtení z cache Sonnet 5.5 za 0,10 USD), tabulka `ai_calls`, denní limit `AI_DENNI_LIMIT_TOKENU`, rate limit na uživatele (`AI_LIMIT_POZADAVKU=10/60`, `AI_LIMIT_NAROCNYCH=3/600`; po překročení HTTP 429 + `Retry-After` a záznam `ai.rate_limited` v `/admin/audit`) |
 | Prompt injection | data odděleny značkami, nástroje jen pro čtení, ukázkový útok v příkladu 04 |
 | Nadměrná agentura | agent má jen dva čtecí nástroje, max. 5 kroků, 3 nástroje na krok, 60 s, výstup nástroje 8 000 znaků |
 | Zpracování výstupu | zobrazení přes `e()`, nic se neukládá, validace v PHP |
@@ -235,6 +235,9 @@ data, ne pokyny). Prompty se revidují v diffu jako text a mají číslo verze v
 2. **Přihlášení** `/admin/prihlaseni`, správa článků, **audit log** `/admin/audit` (každá změna je zapsaná).
 3. **AI nástroje** `/admin/ai`: přehled spotřeby, modelů a posledních volání. Spustit příklad 01 a pak 04 s článkem
    `demo-injection` (model injekci ignoruje, výstup je escapovaný).
+3a. **Rate limit (volitelně, 1 min):** na `/admin/ai/06` odeslat 11 dotazů do minuty. Jedenáctý ukáže v poli chyb
+   „Příliš mnoho požadavků na AI…“ (HTTP 429, `Retry-After`) a v `/admin/audit?akce=ai.rate_limited` je záznam. Funguje i
+   s falešným klientem. Po ukázce počkat minutu, AI redaktor (09) má vlastní limit 3 za 10 minut.
 4. **Konzole:** `docker compose exec -T app php bin/konzole ai:priklad 02` a v `/admin/ai` ukázat nový řádek volání
    (tokeny, cena, trvání). Přepnout model u příkladu 05 a porovnat cenu.
 5. **Kód:** otevřít `MeteredLlmClient` a `Example07AskNewsroom` (smyčka a limity) vedle `FakeLlmClient::toolScenario()`.

@@ -32,7 +32,7 @@ flowchart LR
         CFG --> DI
     end
     subgraph Http["App\\Http — Kernel, Routing, Middleware, View, Controller"]
-        K[Kernel] --> MW["MiddlewarePipeline<br/>M3 (plán 003): SecurityHeaders → ErrorHandler<br/>→ Routing → Csrf → AdminAccess"]
+        K[Kernel] --> MW["MiddlewarePipeline<br/>M3 (plán 003): SecurityHeaders → ErrorHandler<br/>→ Routing → Csrf → AdminAccess<br/>→ AiRateLimit (plán 013)"]
         MW --> RT["RoutingMiddleware<br/>Router::match"]
         RT --> C["Controller"]
         S["Session (líná služba)<br/>CsrfToken, AuthSession, Flash (M5)"] -.-> MW
@@ -359,3 +359,9 @@ jako uživatel `redakce_migrace`; aplikace pracuje jako `redakce_app` (jen DML).
 `make qa` = check + test + `composer audit`.
 Hooky Claude Code (`php-lint`, `rychla-kontrola`) a git hook `pre-commit` volají tytéž nástroje
 přes `docker compose exec -T app …`.
+
+## Rate limit AI tras (plán 013, ADR-0013)
+`AiRateLimitMiddleware` je poslední článek řetězu (za CSRF a AdminAccess). Trasu pozná podle handleru z `RouteMatch`;
+`AiRateLimiter` počítá posuvné okno v tabulce `ai_rate_limit_hits` (`user_id`, `bucket` = `ai` | `ai_heavy`, `created_at`;
+FK na `users` s `ON DELETE CASCADE`). Běžné AI trasy mají 10/60 s, AI redaktor (09) 3/600 s; `save`/`discard` jsou vyňaty.
+Překročení = HTTP 429 + `Retry-After` a audit `ai.rate_limited`. Neznámá POST trasa pod `/admin/ai/` dostane běžný kbelík.

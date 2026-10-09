@@ -183,6 +183,16 @@ se přihlas jako admin a otevři `/admin/ai`. Proměnné v `.env` (výchozí hod
 | `AI_MODEL` | model pro generování textu (výchozí `claude-sonnet-5-5`) |
 | `AI_MODEL_LEVNY` | levnější model pro klasifikaci (výchozí `claude-haiku-5-5`) |
 | `AI_DENNI_LIMIT_TOKENU` | denní limit tokenů všech volání (výchozí `200000`) |
+| `AI_LIMIT_POZADAVKU` | rate limit běžných AI požadavků, formát `počet/sekundy` (výchozí `10/60`, tedy 10 za minutu) |
+| `AI_LIMIT_NAROCNYCH` | rate limit náročných požadavků, jen příklad 09 (návrh), formát `počet/sekundy` (výchozí `3/600`, tedy 3 za 10 minut) |
+
+**Rate limit AI tras (plán 013, OWASP LLM10).** Přihlášený admin smí spustit běžný AI požadavek (příklady 01–08 včetně
+indexace 08) nejvýše podle `AI_LIMIT_POZADAVKU` a návrh AI redaktora (09) podle `AI_LIMIT_NAROCNYCH`. Okno je posuvné
+a klíčem je uživatel, ne IP ani session. Po překročení vrátí aplikace **HTTP 429** s hlavičkou `Retry-After: <sekundy>`
+(příklad 06 vrací JSON, ostatní českou chybovou stránku) a do audit logu zapíše akci `ai.rate_limited`. Uložení a zahození
+návrhu 09 se neomezují, aby se zaplacený návrh neztratil. Limit platí i pro falešného klienta, takže 429 vyzkoušíš bez klíče.
+Při opakovaném ručním zkoušení 09 limit zvýšíš: `AI_LIMIT_NAROCNYCH=20/600 make up`. Neplatná hodnota (např. `10`)
+shodí aplikaci s chybou, která jmenuje proměnnou.
 
 Skutečné API zapneš tak, že do `.env` doplníš `AI_PROVIDER=anthropic` a `ANTHROPIC_API_KEY=…` a spustíš `make up`.
 Kvůli ceně se po každém volání zapisují do tabulky `ai_calls` jen metadata (tokeny, cena, trvání), nikdy texty.
@@ -211,7 +221,7 @@ Co je dobré vědět:
 - Přerušené volání se v `ai_calls` zapíše se stavem „Přerušeno“ a výstupní tokeny se jen odhadují (znaky / 4).
 - Příklad 07 je omezený: 5 volání modelu, 3 nástroje na krok, 60 s. Nástroje jen čtou publikované články; text článků je
   nedůvěryhodný (nepřímá prompt injection), proto nic nezapisují.
-- Rate limit těchto endpointů zatím chybí (backlog).
+- Rate limit těchto endpointů je od plánu 013, viz „Rate limit AI tras“ výše v tabulce proměnných.
 
 Výklad je v kapitole „Streaming a nástroje“ v [`docs/tutorial.html`](docs/tutorial.html#m7), rozhodnutí v
 [ADR-0008](docs/adr/0008-streaming-a-nastroje-llm.md), podklady v `docs/ai-priklady/06.md` a `07.md`.
