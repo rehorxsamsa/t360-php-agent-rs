@@ -20,7 +20,7 @@ return [
         'input_per_mtok' => 2.00,
         'output_per_mtok' => 10.00,
         'cache_write_per_mtok' => 2.50,
-        'cache_read_per_mtok' => 0.20,
+        'cache_read_per_mtok' => 0.10,
         'supports_effort' => true,
     ],
     'claude-haiku-4-5-20251001' => [

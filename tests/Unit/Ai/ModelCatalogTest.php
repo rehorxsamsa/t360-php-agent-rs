@@ -29,7 +29,7 @@ final class ModelCatalogTest extends TestCase
         self::assertSame(2.0, $model->inputPerMTok);
         self::assertSame(10.0, $model->outputPerMTok);
         self::assertSame(2.5, $model->cacheWritePerMTok);
-        self::assertSame(0.2, $model->cacheReadPerMTok);
+        self::assertSame(0.1, $model->cacheReadPerMTok);
         self::assertTrue($model->supportsEffort);
     }
 
