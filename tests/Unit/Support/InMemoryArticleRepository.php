@@ -8,6 +8,8 @@ use App\Domain\Article\ArticleDetail;
 use App\Domain\Article\ArticleRepository;
 use App\Domain\Article\ArticleStatus;
 use App\Domain\Article\ArticleSummary;
+use App\Domain\Article\NamedCount;
+use App\Domain\Article\PublishedStatistics;
 
 /**
  * Repozitář článků v paměti. Vrací souhrny v pořadí, v jakém byly nastaveny (už jako "publikované"),
@@ -17,6 +19,11 @@ use App\Domain\Article\ArticleSummary;
  * a `findPublishedBySlug()` nad nimi uplatňují stejnou sémantiku jako PdoArticleRepository
  * (jen publikované s `published_at <= now`, `mb_stripos` v titulku, perexu a textu,
  * řazení `published_at DESC` a pak pozdější přidání první, nejvýše `limit`, prázdný dotaz → []).
+ *
+ * Plán 011: `publishedStatistics()` počítá ze stejných článků přes stejné pravidlo (`publicArticles($now)`):
+ * rubriky jen s publikovaným článkem, štítky nejvýše `$tagLimit`, řazení podle počtu sestupně a při shodě
+ * podle názvu (zjednodušená česká kolace: diakritika se ignoruje, jen č, ř, š, ž řadí za základní písmeno).
+ * Rubriky dvojník neomezuje (strop 50 hlídá nástroj `statistiky`, AC 3). `totalCalls()` sečte volání všech metod (AC 19: stránka /admin/ai/10 repozitář nevolá).
  */
 final class InMemoryArticleRepository implements ArticleRepository
 {
@@ -35,6 +42,8 @@ final class InMemoryArticleRepository implements ArticleRepository
     public int $countCalls = 0;
     public int $findCalls = 0;
     public int $searchCalls = 0;
+    public int $statisticsCalls = 0;
+    public ?int $lastTagLimit = null;
     public ?int $lastLimit = null;
     public ?int $lastOffset = null;
     public ?\DateTimeImmutable $lastNow = null;
@@ -123,6 +132,78 @@ final class InMemoryArticleRepository implements ArticleRepository
             ),
             array_slice($found, 0, max(0, $limit)),
         );
+    }
+
+    public function publishedStatistics(\DateTimeImmutable $now, int $tagLimit): PublishedStatistics
+    {
+        ++$this->statisticsCalls;
+        $this->lastNow = $now;
+        $this->lastTagLimit = $tagLimit;
+
+        $since = $now->sub(new \DateInterval('P30D'));
+        $count = 0;
+        $recent = 0;
+        $latest = null;
+        $categories = [];
+        $tags = [];
+        foreach ($this->publicArticles($now) as $article) {
+            $publishedAt = $article['publishedAt'] ?? throw new \LogicException('Publikovaný článek bez data.');
+            ++$count;
+            if ($publishedAt > $since) {
+                ++$recent;
+            }
+            if ($latest === null || $publishedAt > $latest) {
+                $latest = $publishedAt;
+            }
+            $categories[$article['categoryName']] = ($categories[$article['categoryName']] ?? 0) + 1;
+            foreach (array_unique($article['tagNames']) as $tag) {
+                $tags[$tag] = ($tags[$tag] ?? 0) + 1;
+            }
+        }
+
+        return new PublishedStatistics(
+            publishedCount: $count,
+            publishedLast30Days: $recent,
+            latestPublishedAt: $latest,
+            categories: self::sortedCounts($categories, PHP_INT_MAX),
+            tags: self::sortedCounts($tags, max(0, $tagLimit)),
+        );
+    }
+
+    /** Součet volání všech čtecích metod. */
+    public function totalCalls(): int
+    {
+        return $this->latestCalls + $this->countCalls + $this->findCalls + $this->searchCalls + $this->statisticsCalls;
+    }
+
+    /**
+     * @param array<array-key, int> $counts název => počet
+     *
+     * @return list<NamedCount>
+     */
+    private static function sortedCounts(array $counts, int $limit): array
+    {
+        $items = [];
+        foreach ($counts as $name => $articles) {
+            $items[] = new NamedCount((string) $name, $articles);
+        }
+        usort(
+            $items,
+            static fn(NamedCount $a, NamedCount $b): int => [$b->articles, self::czechKey($a->name), $a->name]
+                <=> [$a->articles, self::czechKey($b->name), $b->name],
+        );
+
+        return array_slice($items, 0, $limit);
+    }
+
+    /** Řadicí klíč pro zjednodušenou českou kolaci (C < Č < D, diakritika jinak bez vlivu, bez ohledu na velikost). */
+    private static function czechKey(string $name): string
+    {
+        return strtr(mb_strtolower($name), [
+            'á' => 'a', 'ä' => 'a', 'é' => 'e', 'ě' => 'e', 'í' => 'i', 'ó' => 'o', 'ö' => 'o', 'ú' => 'u', 'ů' => 'u',
+            'ü' => 'u', 'ý' => 'y', 'ď' => 'd', 'ť' => 't', 'ň' => 'n',
+            'č' => 'c~', 'ř' => 'r~', 'š' => 's~', 'ž' => 'z~',
+        ]);
     }
 
     /** @param list<string> $tagNames */

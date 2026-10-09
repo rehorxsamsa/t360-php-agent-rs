@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Persistence;
 
 use App\Domain\Article\ArticleRepository;
+use App\Domain\Article\NamedCount;
 use App\Infrastructure\Migration\Migrator;
 use App\Infrastructure\Migration\PdoMigrationRepository;
 use App\Infrastructure\Persistence\PdoArticleRepository;
 use App\Infrastructure\Seed\Seed;
+use App\Tests\Integration\StatementCounter;
 use App\Tests\Integration\TestDatabase;
 use PHPUnit\Framework\TestCase;
 
@@ -261,5 +263,141 @@ final class PdoArticleRepositoryTest extends TestCase
             self::assertSame([], $this->repository->searchPublished('', $this->now, 5));
             self::assertSame([], $this->repository->searchPublished("  \n ", $this->now, 5));
         }));
+    }
+
+    // ---------------------------------------------------------------- plán 011, AC 2: statistiky publikovaných
+
+    /** Smaže obsah seedu (články, štítky, rubriky), schéma zůstává. */
+    private function clearContent(): void
+    {
+        foreach (['article_tags', 'articles', 'tags', 'categories'] as $table) {
+            $this->pdo->exec('DELETE FROM ' . $table);
+        }
+    }
+
+    private function insertCategory(string $name, string $slug): int
+    {
+        $this->pdo->prepare('INSERT INTO categories (name, slug) VALUES (:name, :slug)')->execute(['name' => $name, 'slug' => $slug]);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    private function insertTag(string $name, string $slug): int
+    {
+        $this->pdo->prepare('INSERT INTO tags (name, slug) VALUES (:name, :slug)')->execute(['name' => $name, 'slug' => $slug]);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /** @param list<int> $tagIds */
+    private function insertArticle(string $slug, int $categoryId, string $status, ?string $publishedAt, array $tagIds = []): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO articles (category_id, title, slug, excerpt, body, status, published_at)'
+            . ' VALUES (:category, :title, :slug, :excerpt, :body, :status, :published_at)',
+        )->execute([
+            'category' => $categoryId,
+            'title' => 'Článek ' . $slug,
+            'slug' => $slug,
+            'excerpt' => 'Perex.',
+            'body' => 'Text.',
+            'status' => $status,
+            'published_at' => $publishedAt,
+        ]);
+        $articleId = (int) $this->pdo->lastInsertId();
+        foreach ($tagIds as $tagId) {
+            $this->pdo->prepare('INSERT INTO article_tags (article_id, tag_id) VALUES (:article, :tag)')
+                ->execute(['article' => $articleId, 'tag' => $tagId]);
+        }
+    }
+
+    /**
+     * Rubriky „Čeština“ a „Cestování“ po 2 publikovaných, „Zprávy“ jen koncept, archivní a naplánovaný (o sekundu
+     * po „teď“); štítky se 3, 2 a 1 publikovaným článkem a štítek jen u konceptu. „Teď“ = 2026-10-03 12:00,
+     * okno 30 dní = (2026-09-03 12:00, 2026-10-03 12:00].
+     */
+    private function statisticsFixture(): void
+    {
+        $this->clearContent();
+        $czech = $this->insertCategory('Čeština', 'cestina');
+        $travel = $this->insertCategory('Cestování', 'cestovani');
+        $news = $this->insertCategory('Zprávy', 'zpravy');
+        $three = $this->insertTag('Tři', 'tri');
+        $two = $this->insertTag('Dva', 'dva');
+        $one = $this->insertTag('Jeden', 'jeden');
+        $draftOnly = $this->insertTag('Jen koncept', 'jen-koncept');
+
+        $this->insertArticle('cestina-stara', $czech, 'published', '2026-09-01 08:00:00', [$three, $two]);
+        $this->insertArticle('cestina-tesne-v-okne', $czech, 'published', '2026-09-03 12:00:01', [$three, $one]);
+        $this->insertArticle('cestovani-na-hrane-okna', $travel, 'published', '2026-09-03 12:00:00', [$three]);
+        $this->insertArticle('cestovani-prave-ted', $travel, 'published', '2026-10-03 12:00:00', [$two]);
+        $this->insertArticle('zpravy-koncept', $news, 'draft', null, [$draftOnly, $three]);
+        $this->insertArticle('zpravy-archiv', $news, 'archived', '2026-09-20 08:00:00', [$three, $two]);
+        $this->insertArticle('zpravy-planovany', $news, 'published', '2026-10-03 12:00:01', [$three, $draftOnly]);
+    }
+
+    /**
+     * @param list<NamedCount> $counts
+     *
+     * @return list<array{string, int}>
+     */
+    private static function pairs(array $counts): array
+    {
+        return array_map(static fn(NamedCount $count): array => [$count->name, $count->articles], $counts);
+    }
+
+    public function test_published_statistics_count_only_public_articles(): void
+    {
+        $this->statisticsFixture();
+
+        $statistics = $this->repository->publishedStatistics($this->now, 2);
+
+        self::assertSame(4, $statistics->publishedCount);
+        self::assertSame(2, $statistics->publishedLast30Days, 'Jen cestina-tesne-v-okne a cestovani-prave-ted.');
+        self::assertNotNull($statistics->latestPublishedAt);
+        self::assertSame('2026-10-03 12:00:00', $statistics->latestPublishedAt->format('Y-m-d H:i:s'));
+        self::assertSame([['Cestování', 2], ['Čeština', 2]], self::pairs($statistics->categories), 'Shoda počtu → česká kolace (C před Č), Zprávy chybí.');
+        self::assertSame([['Tři', 3], ['Dva', 2]], self::pairs($statistics->tags));
+    }
+
+    public function test_published_statistics_tag_limit_and_draft_only_tag(): void
+    {
+        $this->statisticsFixture();
+
+        $statistics = $this->repository->publishedStatistics($this->now, 10);
+
+        self::assertSame([['Tři', 3], ['Dva', 2], ['Jeden', 1]], self::pairs($statistics->tags), 'Štítek jen u konceptu chybí.');
+        self::assertSame([], $this->repository->publishedStatistics($this->now, 0)->tags);
+    }
+
+    public function test_published_statistics_respect_now_argument(): void
+    {
+        $this->statisticsFixture();
+
+        $later = $this->repository->publishedStatistics(new \DateTimeImmutable('2026-10-03 12:00:01', new \DateTimeZone('Europe/Prague')), 10);
+
+        self::assertSame(5, $later->publishedCount, 'Naplánovaný článek se započítá od svého času (čas z argumentu, ne NOW()).');
+        self::assertSame('2026-10-03 12:00:01', $later->latestPublishedAt?->format('Y-m-d H:i:s'));
+        self::assertContains(['Zprávy', 1], self::pairs($later->categories));
+    }
+
+    public function test_published_statistics_use_at_most_three_statements(): void
+    {
+        $this->statisticsFixture();
+
+        self::assertLessThanOrEqual(3, StatementCounter::statements($this->pdo, fn() => $this->repository->publishedStatistics($this->now, 10)));
+    }
+
+    public function test_published_statistics_of_empty_database(): void
+    {
+        $this->clearContent();
+
+        $statistics = $this->repository->publishedStatistics($this->now, 10);
+
+        self::assertSame(0, $statistics->publishedCount);
+        self::assertSame(0, $statistics->publishedLast30Days);
+        self::assertNull($statistics->latestPublishedAt);
+        self::assertSame([], $statistics->categories);
+        self::assertSame([], $statistics->tags);
     }
 }

@@ -8,6 +8,8 @@ use App\Domain\Article\ArticleDetail;
 use App\Domain\Article\ArticleRepository;
 use App\Domain\Article\ArticleStatus;
 use App\Domain\Article\ArticleSummary;
+use App\Domain\Article\NamedCount;
+use App\Domain\Article\PublishedStatistics;
 
 final readonly class PdoArticleRepository implements ArticleRepository
 {
@@ -19,6 +21,12 @@ final readonly class PdoArticleRepository implements ArticleRepository
      * i v režimu `NO_BACKSLASH_ESCAPES`.
      */
     private const string LIKE_ESCAPE = '!';
+
+    /** Období pro „publikováno v posledních 30 dnech“. */
+    private const string RECENT_PERIOD = 'P30D';
+
+    /** Pojistka proti neomezenému výstupu – rubrik je v redakci řádově jednotky. */
+    private const int CATEGORY_LIMIT = 50;
 
     public function __construct(private \PDO $pdo) {}
 
@@ -134,6 +142,113 @@ final readonly class PdoArticleRepository implements ArticleRepository
         return $summaries;
     }
 
+    /**
+     * Tři dotazy: souhrn (počet, posledních 30 dní, nejnovější), rubriky a štítky.
+     * Podmínka publikovanosti je ve všech třech stejná (`PUBLISHED_CONDITION`), čas jde
+     * z argumentu, ne z `NOW()` databáze.
+     */
+    public function publishedStatistics(\DateTimeImmutable $now, int $tagLimit): PublishedStatistics
+    {
+        $summary = $this->publishedSummary($now);
+
+        return new PublishedStatistics(
+            publishedCount: $summary['count'],
+            publishedLast30Days: $summary['last30Days'],
+            latestPublishedAt: $summary['latest'],
+            categories: $this->publishedCategoryCounts($now),
+            tags: $tagLimit > 0 ? $this->publishedTagCounts($now, $tagLimit) : [],
+        );
+    }
+
+    /** @return array{count: int, last30Days: int, latest: ?\DateTimeImmutable} */
+    private function publishedSummary(\DateTimeImmutable $now): array
+    {
+        // `:since` je samostatný parametr – se skutečnými prepared statements nejde `:now` použít dvakrát.
+        $statement = $this->pdo->prepare(
+            'SELECT COUNT(*) AS published_count,'
+            . ' COALESCE(SUM(a.published_at > :since), 0) AS last_30_days,'
+            . ' MAX(a.published_at) AS latest_published_at'
+            . ' FROM articles a WHERE ' . self::PUBLISHED_CONDITION,
+        );
+        $statement->bindValue('since', $this->formatNow($this->localTime($now)->sub(new \DateInterval(self::RECENT_PERIOD))));
+        $statement->bindValue('status', ArticleStatus::Published->value);
+        $statement->bindValue('now', $this->formatNow($now));
+        $statement->execute();
+
+        $row = $statement->fetch();
+        if (!is_array($row)
+            || !is_numeric($row['published_count'] ?? null)
+            || !is_numeric($row['last_30_days'] ?? null)
+            || !(is_string($row['latest_published_at'] ?? null) || ($row['latest_published_at'] ?? null) === null)
+        ) {
+            throw new \UnexpectedValueException('Statistiky článků mají neočekávaný tvar.');
+        }
+
+        return [
+            'count' => (int) $row['published_count'],
+            'last30Days' => (int) $row['last_30_days'],
+            'latest' => is_string($row['latest_published_at']) ? new \DateTimeImmutable($row['latest_published_at']) : null,
+        ];
+    }
+
+    /** @return list<NamedCount> */
+    private function publishedCategoryCounts(\DateTimeImmutable $now): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT c.name, COUNT(*) AS article_count'
+            . ' FROM articles a JOIN categories c ON c.id = a.category_id'
+            . ' WHERE ' . self::PUBLISHED_CONDITION
+            . ' GROUP BY c.id, c.name'
+            . ' ORDER BY article_count DESC, c.name, c.id'
+            . ' LIMIT :limit',
+        );
+        $statement->bindValue('status', ArticleStatus::Published->value);
+        $statement->bindValue('now', $this->formatNow($now));
+        $statement->bindValue('limit', self::CATEGORY_LIMIT, \PDO::PARAM_INT);
+        $statement->execute();
+
+        return $this->hydrateNamedCounts($statement->fetchAll());
+    }
+
+    /** @return list<NamedCount> */
+    private function publishedTagCounts(\DateTimeImmutable $now, int $limit): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT t.name, COUNT(*) AS article_count'
+            . ' FROM articles a'
+            . ' JOIN article_tags at_link ON at_link.article_id = a.id'
+            . ' JOIN tags t ON t.id = at_link.tag_id'
+            . ' WHERE ' . self::PUBLISHED_CONDITION
+            . ' GROUP BY t.id, t.name'
+            . ' ORDER BY article_count DESC, t.name, t.id'
+            . ' LIMIT :limit',
+        );
+        $statement->bindValue('status', ArticleStatus::Published->value);
+        $statement->bindValue('now', $this->formatNow($now));
+        $statement->bindValue('limit', $limit, \PDO::PARAM_INT);
+        $statement->execute();
+
+        return $this->hydrateNamedCounts($statement->fetchAll());
+    }
+
+    /**
+     * @param array<mixed> $rows
+     *
+     * @return list<NamedCount>
+     */
+    private function hydrateNamedCounts(array $rows): array
+    {
+        $counts = [];
+        foreach ($rows as $row) {
+            if (!is_array($row) || !is_string($row['name'] ?? null) || !is_numeric($row['article_count'] ?? null)) {
+                throw new \UnexpectedValueException('Řádek statistik má neočekávaný tvar.');
+            }
+            $counts[] = new NamedCount($row['name'], (int) $row['article_count']);
+        }
+
+        return $counts;
+    }
+
     /** Zástupné znaky LIKE (`%`, `_`) i samotný escapovací znak se hledají doslova. */
     private function escapeLike(string $value): string
     {
@@ -193,8 +308,12 @@ final readonly class PdoArticleRepository implements ArticleRepository
      */
     private function formatNow(\DateTimeImmutable $now): string
     {
-        return $now
-            ->setTimezone(new \DateTimeZone(date_default_timezone_get()))
-            ->format('Y-m-d H:i:s.u');
+        return $this->localTime($now)->format('Y-m-d H:i:s.u');
+    }
+
+    /** Čas v zóně PHP, ve které se zapisuje `published_at` (odečítání dní pak drží místní čas i přes změnu SEČ/SELČ). */
+    private function localTime(\DateTimeImmutable $time): \DateTimeImmutable
+    {
+        return $time->setTimezone(new \DateTimeZone(date_default_timezone_get()));
     }
 }
