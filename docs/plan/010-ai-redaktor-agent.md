@@ -1,5 +1,5 @@
 # 010 – AI příklad 09: AI redaktor (workflow s člověkem ve smyčce)
-Stav: schváleno
+Stav: hotovo
 
 - **Milník:** M7c **zúžený** (uživatelský příběh 10 zadání; jen příklad 09 — příklad 10 MCP server = M7d, vlastní plán kvůli nové
   composer závislosti) · **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP; zúžená bezpečnostní revize **ano** (první zápis
