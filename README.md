@@ -46,7 +46,7 @@ Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamov�
 | Náklady | tabulka `ai_calls` (jen metadata: tokeny, cena, trvání, stav – nikdy texty), denní limit tokenů `AI_DENNI_LIMIT_TOKENU` |
 | Bezpečnost LLM | obsah článků i výstup modelu je nedůvěryhodný vstup (obrana proti prompt injection), validace a escapování výstupu, nástroje jen čtou |
 
-**Osm AI příkladů** (`docs/ai-priklady/`, konzole `ai:priklad NN`, v prohlížeči `/admin/ai`):
+**Devět AI příkladů** (`docs/ai-priklady/`, konzole `ai:priklad NN`, v prohlížeči `/admin/ai`):
 
 | # | Příklad | Co ukazuje |
 |---|---|---|
@@ -58,6 +58,7 @@ Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamov�
 | 06 | Asistent psaní | streaming odpovědi (SSE) |
 | 07 | Zeptej se redakce | tool use: model sám hledá a čte články |
 | 08 | Sémantické vyhledávání | embeddingy ve sloupci `VECTOR`, vektorový index, odpověď s ověřenými citacemi (RAG) |
+| 09 | AI redaktor | workflow osnova → koncept → sebekontrola → přepracování; člověk ve smyčce, uložení jen jako koncept (LLM06) |
 
 ### 4. Kvalita a testování
 | Nástroj | Verze | K čemu |
@@ -132,6 +133,7 @@ služby zdravé. Další cíle vypíše `make help`.
 | AI příklad 06, asistent psaní se streamováním (admin) | <http://localhost:8080/admin/ai/06> |
 | AI příklad 07, zeptej se redakce (admin) | <http://localhost:8080/admin/ai/07> |
 | AI příklad 08, sémantické vyhledávání s citacemi (admin) | <http://localhost:8080/admin/ai/08> |
+| AI příklad 09, AI redaktor s člověkem ve smyčce (admin) | <http://localhost:8080/admin/ai/09> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
@@ -235,6 +237,20 @@ make index                    # po změně EMBED_PROVIDER vždy zaindexuj znovu
 
 Živé ověření s Ollamou zatím nebylo provedeno. Výklad je v kapitole [M7b](docs/tutorial.html#m7b), rozhodnutí v
 [ADR-0009](docs/adr/0009-semanticke-vyhledavani-embeddingy-a-citace.md), podklady v `docs/ai-priklady/08.md`.
+
+## AI příklad 09: AI redaktor s člověkem ve smyčce (M7c)
+Příklad 09 z tématu navrhne osnovu, napíše koncept, zkontroluje ho a jednou přepracuje. Kroky určuje kód, model nemá žádné nástroje
+a **nic neukládá**: uložit návrh jako koncept smí jen admin tlačítkem a publikovat jen v úpravě článku (OWASP LLM06). Běží bez API klíče
+(falešný klient):
+
+```bash
+docker compose exec app php bin/konzole ai:priklad 09
+docker compose exec app php bin/konzole ai:priklad 09 --tema="Jak Docker usnadňuje práci malé redakce"
+```
+
+V prohlížeči (admin): <http://localhost:8080/admin/ai/09>, „Navrhnout koncept“ a pak „Uložit jako koncept“. Se skutečným API zatím neměřeno
+(odhad ≈ 0,06 USD a 50 až 90 s za návrh). Výklad je v kapitole [M7c](docs/tutorial.html#m7c), rozhodnutí v
+[ADR-0010](docs/adr/0010-ai-redaktor-workflow-se-schvalenim.md), podklady v `docs/ai-priklady/09.md`.
 
 Testy: `make test` (nebo `make qa`). Integrační testy schématu mažou a znovu vytvářejí tabulky
 v databázi `redakce_test`, proto dvě sady testů nesmí běžet paralelně nad `redakce_test`.

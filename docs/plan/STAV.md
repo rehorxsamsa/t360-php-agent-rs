@@ -92,3 +92,14 @@ skutečným Claude API (`claude-sonnet-5-5`; 06 ≈ 0,002–0,003 USD, 07 ≈ 0,
 Kapitola M7 je v `docs/tutorial.html`. Otevřené: úprava skillu `ai-integrace` a agenta `ai-inzenyr` (odkaz na ADR-0008,
 `stream()` v samostatném rozhraní, `fetch` + POST místo `EventSource`) — změna `.claude/`, čeká na souhlas člověka;
 backlog: fokus na „Přerušit“ po spuštění, rate limit pro `/admin/ai/06` a `/07`, Haiku 4.5 se blíží vyřazení (15. 10. 2026).
+
+## Stav M7c (plán 010) — příklad 09 hotový, čeká na schválení (Brána 2)
+Příklad 09 (AI redaktor, workflow s člověkem ve smyčce; ADR-0010) je implementovaný, `make qa` zelená (1718 testů),
+E2E Q1–Q5 a Q7 prošly (Playwright + curl), bezpečnostní revize bez kritických/vysokých nálezů; nízké nálezy 2 a 3
+(tvrdý limit 110 s před každým krokem, neutralizace zero-width/`＜`/entit) opraveny. Kapitola M7c je v tutoriálu.
+Otevřené:
+- **Rate limit AI tras** (nález 1, střední, LLM10) — udělat před zapnutím skutečného poskytovatele; platí i pro `/admin/ai/06`–`09`.
+- **Živý běh s reálným API (AC 30, Q6)** — jen člověk; cena ≈ 0,06 USD a doba 50–90 s jsou zatím odhad.
+- Cena cache read Sonnet 5.5 v `config/ai-models.php` (0,20 → 0,10 USD/MTok) — samostatný `fix(ai)`; Haiku 4.5 → 5.5 (vyřazení od 15. 10. 2026).
+- **Příklad 10 (MCP server) = M7d**, vlastní plán, nová composer závislost = brána člověka. `AgentLoop` se nevyčleňuje (09 nástroje nepoužívá).
+- Testovací koncepty 47 a 48 v dev DB (a jejich audit) — smazání potřebuje souhlas člověka.
