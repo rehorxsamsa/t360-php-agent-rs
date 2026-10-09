@@ -1,9 +1,10 @@
 # Architektura — Redakční systém (t360)
 
-> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-08 (plány 001–004, M1–M4 — hotovo;
+> Udržuje agent `architekt`. Poslední aktualizace: 2026-10-09 (plány 001–004, M1–M4 — hotovo;
 > plán 005 M5 administrace článků — implementováno; plán 006 M6 AI jádro — hotovo;
 > plán 007 M8 audit log, opravy, tutoriál — implementováno; plán 008 M7 příklady 06–07 — hotovo;
-> plán 009 M7b příklad 08 RAG — hotovo; plán 010 M7c příklad 09 AI redaktor — ke schválení).
+> plán 009 M7b příklad 08 RAG — hotovo; plán 010 M7c příklad 09 AI redaktor — hotovo;
+> plán 011 M7d příklad 10 MCP server — návrh).
 > Rozhodnutí: [ADR-0001](adr/0001-vyvoj-tymem-agentu.md) tým agentů ·
 > [ADR-0002](adr/0002-vse-v-dockeru-vcetne-mcp.md) vše v Dockeru vč. MCP ·
 > [ADR-0003](adr/0003-anglicke-identifikatory.md) anglické identifikátory ·
@@ -13,7 +14,8 @@
 > [ADR-0007](adr/0007-casy-v-databazi-utc-vs-praha.md) časy v DB: UTC vs. Europe/Prague (navrženo) ·
 > [ADR-0008](adr/0008-streaming-a-nastroje-llm.md) streaming a tool use v LLM klientovi ·
 > [ADR-0009](adr/0009-semanticke-vyhledavani-embeddingy-a-citace.md) embeddingy (Ollama), MariaDB VECTOR a citace ·
-> [ADR-0010](adr/0010-ai-redaktor-workflow-se-schvalenim.md) AI redaktor: workflow bez nástrojů, uložení jen schválením admina (navrženo).
+> [ADR-0010](adr/0010-ai-redaktor-workflow-se-schvalenim.md) AI redaktor: workflow bez nástrojů, uložení jen schválením admina ·
+> [ADR-0011](adr/0011-mcp-server-redakce-sdk-a-stdio.md) MCP server redakce: `mcp/sdk` za adaptérem, STDIO, jen čtení (navrženo).
 
 ## 1. Vrstvy aplikace (cílový stav)
 Závislosti míří **dovnitř** k `Domain`. `Infrastructure` implementuje rozhraní z `Domain`.
@@ -37,7 +39,10 @@ flowchart LR
         C --> V["TemplateRenderer + e()<br/>templates/*.php<br/>MarkdownRenderer, czech_date (M4)"]
     end
     subgraph Con["App\\Console (M2)"]
-        CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)<br/>ai:priklad (M6)"]
+        CA["ConsoleApplication → Command<br/>migrace:spust | vrat | stav<br/>admin:vytvor (M3), db:seed (M4)<br/>ai:priklad (M6), mcp:server (M7d)"]
+    end
+    subgraph Mcp["App\\Mcp (M7d, ADR-0011, navrženo)"]
+        MS["NewsroomMcpServer<br/>jediné místo s mcp/sdk (Mcp\\Server,<br/>StdioTransport) — JSON-RPC přes STDIO"]
     end
     subgraph App["App\\Application — use-cases"]
         UC["AdminAuthenticator, CreateAdmin (M3)<br/>PublishedArticles → ArticlePage (M4)<br/>AdminArticles, Create/Update/DeleteArticle,<br/>ArticleInputValidator (M5)<br/>AuditLogSearch → AuditLogPage (M8)<br/>SaveAiDraft → CreateArticle (M7c, vždy koncept)"]
@@ -52,7 +57,9 @@ flowchart LR
     subgraph Ai["App\\Ai (M6, plán 006 + ADR-0006)"]
         EX["Examples: ExampleRunner, ExampleRegistry,<br/>Example01…05, StructuredCall, PromptLibrary<br/>AiUsageReport, AiConfig, Cost\\ModelCatalog<br/>M7 (plán 008): Example06WritingAssistant (proud),<br/>Example07AskNewsroom (tool use smyčka)"]
         L["LlmClient + StreamingLlmClient (porty, ADR-0008)<br/>= MeteredLlmClient (denní limit + log ai_calls)<br/>→ FakeLlmClient | AnthropicClient (SseParser)<br/>→ HttpTransport post / stream (CurlHttpTransport)"]
-        TL["Tools (M7): hledej_clanky, nacti_clanek<br/>jen čtení publikovaných"]
+        TL["Tools (M7): hledej_clanky, nacti_clanek<br/>+ statistiky (M7d)<br/>jen čtení publikovaných"]
+        X10["Example10McpServer (M7d): nástroje,<br/>instrukce, prompt navrhni_clanek<br/>bez SDK, bez LlmClient"]
+        X10 --> TL
         EM["Embedding (M7b, ADR-0009): EmbeddingClient (port)<br/>→ FakeEmbeddingClient | OllamaEmbeddingClient<br/>Rag: ArticleIndexer (ai:indexuj)<br/>Example08SemanticSearch (search_result + citace)"]
         ED["Editor (M7c, ADR-0010): Example09AiEditor<br/>osnova → koncept → sebekontrola ⟲ přepracování<br/>StructuredCall, bez nástrojů, nic nezapisuje<br/>→ DraftProposal"]
         EX --> L
@@ -74,6 +81,10 @@ flowchart LR
     C -->|"M7c: Admin\\AiEditorController::draft<br/>(návrh → AiDraftStash v session)"| ED
     C -->|"M7c: ::save = jediný zápis, POST admina"| UC
     CA -->|"ai:priklad"| EX
+    CA -->|"mcp:server"| MS
+    MS --> X10
+    C -->|"M7d: Admin\\McpServerController (jen GET)"| X10
+    CC2["Claude Code / Desktop<br/>(model je v klientovi)"] -.->|"STDIO: docker compose exec -T app"| CA
     EX --> I
     L --> I
     TL -->|"ArticleRepository (veřejné čtení)"| I
@@ -138,13 +149,22 @@ přes vektorový index, **vnější** filtr „publikované a ne budoucí“ z `
 ověřené v PHP. Indexují se jen publikované články, změny pozná `source_hash` počítaný v SQL; use-cases administrace (M5) se nemění.
 Embeddingy se nelogují do `ai_calls` (lokálně zdarma), volání Claude ano.
 
-M7c (plán 010, **ke schválení**, ADR-0010) — příklad 09 (AI redaktor) je **workflow řízený kódem**, ne agent s nástroji:
+M7c (plán 010, hotovo, ADR-0010) — příklad 09 (AI redaktor) je **workflow řízený kódem**, ne agent s nástroji:
 `Admin\AiEditorController::draft` → `Example09AiEditor` → 3–4 kroky `StructuredCall` nad `LlmClient` (osnova → koncept → sebekontrola
 → nejvýše 1 přepracování v časovém rozpočtu); výstup kroku jde do dalšího jen jako data ve značkách `PromptData::block`. Výsledek
 (`DraftProposal`) se uloží jen do session (`Http\Session\AiDraftStash`) a zobrazí v editovatelném formuláři. **Jediný zápis** je
 `POST /admin/ai/09/ulozit` admina (CSRF) → `SaveAiDraft` (Application, vynutí `status = draft`, `published_at = NULL`) → `CreateArticle`
 (validace, slug, audit `article.ai_draft_saved`). `App\Ai` nezávisí na zápisových repozitářích ani use-cases (grep test); publikovat lze
 jen v běžné úpravě článku (M5). Schéma DB se nemění.
+
+M7d (plán 011, **návrh**, ADR-0011) — příklad 10 (MCP server redakce) je **vstupní adaptér** jako `Http` a `Console`, ne volání modelu:
+Claude Code spustí `docker compose exec -T app php bin/konzole mcp:server` a mluví s ním JSON-RPC přes STDIO. `McpServerCommand` →
+`App\Mcp\NewsroomMcpServer` (jediné místo s oficiálním `mcp/sdk ^0.8.1`, `StdioTransport`; stdout = jen protokol, log na stderr) →
+`App\Ai\Examples\Example10McpServer` (bez SDK: seznam nástrojů, instrukce serveru, prompt `navrhni_clanek` s tématem v `<tema>`) →
+čtecí `AgentTool` z 07 (`hledej_clanky`, `nacti_clanek`) a nový `statistiky` → jen veřejné `ArticleRepository` (publikované, čas z `Clock`;
+nová metoda `publishedStatistics`). Žádný `LlmClient`, zápis, `ai_calls` ani přístup k uživatelům, auditu a konceptům (grep test).
+Model je v klientovi, server nic nestojí. `GET /admin/ai/10` (`Admin\McpServerController`) zobrazí návod a stejné definice nástrojů.
+Registrace `claude mcp add --scope local` (mimo repo); `.mcp.json` a `compose.yaml` se nemění.
 
 M8 (plán 007, implementováno) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
 bez CSRF) → `AuditLogSearch` (Application: validace `akce`/`od`/`do`, 50 na stránku) → `AuditLogRepository::count` +
@@ -184,6 +204,7 @@ flowchart TB
     A -.->|"HTTP :11434 /api/embed, jen EMBED_PROVIDER=ollama"| O
     AD --> D
     CC -->|"docker compose exec app php -l / composer"| A
+    CC -.->|"stdio: docker compose exec -T app php bin/konzole mcp:server<br/>(M7d, MCP server redakce, --scope local)"| A
     CC -->|"stdio"| PW
     CC -->|"stdio"| MM
     CC -->|"HTTPS"| C7
