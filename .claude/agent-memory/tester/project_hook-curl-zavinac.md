@@ -45,6 +45,10 @@ neplatná. STDIO výstup MCP serveru přesměrovat do souborů ve scratchpadu (`
 Q3 regrese 09 bez vzniku dat: vygenerovat návrh a „Zahodit návrh“ (neukládat koncept → žádné mazání). Texty v dt/dd
 vrací `innerText` s `\n` místo „: “ — kontrolovat části zvlášť.
 
+Režim B plán 012 (2026-10-09): když `.env` ještě nemá novou hodnotu (mění jen člověk), CLI ověřit jednorázově
+`docker compose exec -T -e AI_MODEL_LEVNY=… app php bin/konzole …` (`.env` se nemění); web/Playwright ale běží se
+starým `.env` → kroky závislé na env označit „čeká na .env“. Playwright session může být už přihlášená (login přeskočit).
+
 **Why:** hook chrání před `curl -d @soubor` (exfiltrace souborů); kontroluje text příkazu, ne sémantiku.
 **How to apply:** úpravy `tests/E2E-scenare.md` dělat nástrojem Edit/Write, ne přes Bash; v curl příkladech psát
 zavináč jako `%40`, URL bez uvozovek. V režimu A s paralelním programátorem nespouštět integrační testy

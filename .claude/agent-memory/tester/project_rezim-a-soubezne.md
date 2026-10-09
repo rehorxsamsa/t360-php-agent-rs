@@ -32,4 +32,8 @@ M7d (plán 011, 2026-10-09): `TestCase::output()` je taky `final` (pomocník poj
 PHPStan nad testy proti ještě neexistujícím třídám: dočasné stuby podle signatur plánu do `var/phpstan-stubs/stubs.php`
 + `phpstan.neon` s `includes: ../../phpstan.neon.dist` a `scanFiles`, spustit `-c` a pak adresář smazat – zbydou jen
 skutečné chyby testů. Test „stránka nemá formulář“ musí nejdřív ověřit 200, jinak projde naprázdno na 404.
+Plán 012 (2026-10-09, T1 před T2): RED čistě v pracovním stromu. Testy přes `AiFixtures::config()` (05, přehled
+/admin/ai) zezelenají hned po změně fixtury – RED nesou jen katalog/AiConfig/MAX_TOKENS. Test-hlídač „ID se v repu
+nevyskytuje“ nesmí mít hledaný řetězec doslova (skládat `'a' . 'b'`), jinak najde sám sebe; README/DEMO (práce
+spisovatele až po T2) do PHPUnit hlídače nedávat, jinak T2 nemá zelené `make qa`.
 Viz [[hook-curl-zavinac]].
