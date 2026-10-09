@@ -1,5 +1,5 @@
 # 011 – AI příklad 10: MCP server redakce (CMS jako nástroj pro Claude Code)
-Stav: schváleno
+Stav: hotovo
 
 - **Milník:** M7d (uživatelský příběh 10 zadání; poslední AI příklad) · **Režim:** výukový (viz `docs/plan/STAV.md`) — MVP;
   zúžená revize závislosti a hranice čtení **doporučena** (otázka 10)
