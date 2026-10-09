@@ -30,6 +30,17 @@ final readonly class FakeLlmClient implements StreamingLlmClient
     /** Slova, která se při hledání v příkladu 07 přeskakují (název aplikace, nic by nerozlišila). */
     private const string SEARCH_STOP_WORD_PREFIX = 'redak';
 
+    /** Sekce osnovy a jejich body ve scénáři 09 (mezititulek => body). */
+    private const array EDITOR_SECTIONS = [
+        'Proč na tématu záleží' => ['Co se v praxi mění a pro koho', 'Jaké problémy téma řeší'],
+        'Jak na to v praxi' => ['Základní postup krok za krokem', 'Na co si dát pozor při zavádění'],
+        'Co si z toho odnést' => ['Stručné shrnutí hlavních myšlenek', 'Doporučení pro další kroky'],
+    ];
+
+    /** Pevná výplň odstavců konceptu ve scénáři 09 (aby text splnil minimální délku). */
+    private const string EDITOR_FILLER = 'Tento oddíl popisuje téma srozumitelně a bez zbytečných podrobností, aby si čtenář mohl udělat rychlou představu '
+        . 'a případně hledat další informace v ověřených zdrojích. Redakce před publikací zkontroluje všechny údaje.';
+
     /** @param int $streamDelayMs pauza mezi přírůstky proudu v ms (v testech 0, v dev kontejneru 60) */
     public function __construct(private int $streamDelayMs = 0) {}
 
@@ -46,6 +57,10 @@ final readonly class FakeLlmClient implements StreamingLlmClient
 
         if ($request->exampleId === '08') {
             return $this->searchScenario($request, $inputChars);
+        }
+
+        if ($request->exampleId === '09') {
+            return $this->editorScenario($request, $inputChars);
         }
 
         $text = $this->answer($request);
@@ -246,6 +261,193 @@ final readonly class FakeLlmClient implements StreamingLlmClient
             'fake',
             content: $content,
         );
+    }
+
+    /**
+     * Scénář příkladu 09 (AI redaktor): krok se pozná podle značek v poslední zprávě `user` – `<nalezy>` = přepracování,
+     * `<koncept>` = sebekontrola, `<osnova>` = koncept, jinak osnova. Odpověď je vždy platný JSON podle schématu kroku.
+     * Obsah je naskriptovaný (nic nechápe); „ignoruj“ v tématu jen napodobí nález prompt injection.
+     */
+    private function editorScenario(LlmRequest $request, int $inputChars): LlmResponse
+    {
+        $message = $this->editorMessage($request);
+        $topic = $this->oneLine($this->between($message, 'tema'));
+
+        $data = match (true) {
+            str_contains($message, '<nalezy>') => $this->editorRevision($message),
+            str_contains($message, '<koncept>') => $this->editorReview($message, $topic),
+            str_contains($message, '<osnova>') => $this->editorDraft($message, $topic),
+            default => $this->editorOutline($topic),
+        };
+        $text = $this->json($data);
+
+        return new LlmResponse(
+            $text,
+            $request->model,
+            'end_turn',
+            new TokenUsage($this->estimateTokens($inputChars), $this->estimateTokens(mb_strlen($text))),
+            'fake',
+        );
+    }
+
+    /** Poslední zpráva `user` s datovou značkou `<tema>` (při opakování po neplatném výstupu je poslední zpráva bez značek). */
+    private function editorMessage(LlmRequest $request): string
+    {
+        $fallback = '';
+        foreach (array_reverse($request->messages) as $message) {
+            if ($message['role'] !== 'user' || !is_string($message['content'])) {
+                continue;
+            }
+            if (str_contains($message['content'], '<tema>')) {
+                return $message['content'];
+            }
+            $fallback = $fallback === '' ? $message['content'] : $fallback;
+        }
+
+        return $fallback;
+    }
+
+    /** @return array<string, mixed> */
+    private function editorOutline(string $topic): array
+    {
+        $sections = [];
+        foreach (self::EDITOR_SECTIONS as $heading => $points) {
+            $sections[] = ['heading' => $heading, 'points' => $points];
+        }
+
+        return [
+            'title' => mb_ucfirst($this->cutAtWords($topic, 200)),
+            'angle' => 'Praktický přehled tématu pro čtenáře webu redakce.',
+            'sections' => $sections,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function editorDraft(string $message, string $topic): array
+    {
+        $outline = $this->between($message, 'osnova');
+        $sections = $this->outlineSections($outline);
+        if (count($sections) < 2) {
+            $sections = [];
+            foreach (self::EDITOR_SECTIONS as $heading => $points) {
+                $sections[] = ['heading' => $heading, 'points' => $points];
+            }
+        }
+
+        $body = $this->editorBody($sections, true);
+        if (mb_strlen($body) > 3800) {
+            $body = $this->editorBody($sections, false);
+        }
+
+        $title = preg_match('/^Titulek: (.+)$/mu', $outline, $matches) === 1 ? trim($matches[1]) : '';
+
+        return [
+            'title' => mb_strlen($title) >= 10 ? $title : $this->cutAtWords($topic, 200),
+            'excerpt' => 'Koncept k tématu „' . $this->cut($topic, 100) . '“ připravil falešný AI redaktor; před publikací ho zkontroluje člověk.',
+            'body' => $body,
+        ];
+    }
+
+    /**
+     * Osnova z textu značky `<osnova>`: řádky `## mezititulek` a pod nimi odrážky `- bod`.
+     *
+     * @return list<array{heading: string, points: list<string>}>
+     */
+    private function outlineSections(string $outline): array
+    {
+        $headings = [];
+        $points = [];
+        foreach (preg_split('/\R/u', $outline) ?: [] as $line) {
+            if (str_starts_with($line, '## ')) {
+                $headings[] = trim(substr($line, 3));
+                $points[] = [];
+            } elseif (str_starts_with($line, '- ') && $headings !== []) {
+                $points[count($points) - 1][] = trim(substr($line, 2));
+            }
+        }
+
+        $sections = [];
+        foreach ($headings as $index => $heading) {
+            $sections[] = ['heading' => $heading, 'points' => $points[$index]];
+        }
+
+        return $sections;
+    }
+
+    /** @param list<array{heading: string, points: list<string>}> $sections */
+    private function editorBody(array $sections, bool $withFiller): string
+    {
+        $parts = [];
+        foreach ($sections as $section) {
+            $paragraph = $section['points'] === [] ? '' : implode('. ', $section['points']) . '.';
+            if ($withFiller) {
+                $paragraph = trim($paragraph . ' ' . self::EDITOR_FILLER);
+            }
+            $parts[] = '## ' . $section['heading'] . "\n\n" . $paragraph;
+        }
+
+        return implode("\n\n", $parts) . "\n\nText vytvořil falešný klient bez volání API.";
+    }
+
+    /** @return array<string, mixed> */
+    private function editorReview(string $message, string $topic): array
+    {
+        $hasSources = str_contains($this->between($message, 'koncept'), '## Zdroje k ověření');
+
+        $issues = [];
+        if (!$hasSources) {
+            $issues[] = [
+                'type' => 'facts',
+                'severity' => 'medium',
+                'note' => 'Doplňte oddíl se zdroji, podle kterých redakce tvrzení ověří.',
+            ];
+        }
+        if (mb_stripos($topic, 'ignoruj') !== false) {
+            $issues[] = [
+                'type' => 'prompt_injection',
+                'severity' => 'high',
+                'note' => 'Téma obsahuje pokyn pro model (např. publikovat článek). Pokyn nebyl vykonán – AI redaktor nic nepublikuje.',
+            ];
+        }
+
+        return [
+            'verdict' => $hasSources ? 'ok' : 'revise',
+            'summary' => $hasSources
+                ? 'Koncept odpovídá osnově.'
+                : 'Koncept odpovídá osnově, chybí ale zdroje k ověření tvrzení.',
+            'issues' => $issues,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function editorRevision(string $message): array
+    {
+        $draft = $this->between($message, 'koncept');
+        $matched = preg_match('/\ATitulek: ([^\n]*)\nPerex: ([^\n]*)\n\n(.*)\z/su', $draft, $matches) === 1;
+
+        return [
+            'title' => $matched ? trim($matches[1]) : '',
+            'excerpt' => $matched ? trim($matches[2]) : '',
+            'body' => ($matched ? $matches[3] : '') . "\n\n## Zdroje k ověření\n\n- Doplní redakce před publikací.",
+        ];
+    }
+
+    private function oneLine(string $text): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+    }
+
+    /** Zkrátí text na nejvýše `$max` znaků na hranici slova (bez „…“). */
+    private function cutAtWords(string $text, int $max): string
+    {
+        if (mb_strlen($text) <= $max) {
+            return $text;
+        }
+
+        $cut = mb_substr($text, 0, $max);
+        $space = mb_strrpos($cut, ' ');
+
+        return rtrim($space !== false && $space > 0 ? mb_substr($cut, 0, $space) : $cut);
     }
 
     /**

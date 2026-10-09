@@ -173,4 +173,93 @@ final class AiFixtures
     ): ArticleSnapshot {
         return new ArticleSnapshot(title: $title, slug: $slug, excerpt: $excerpt, body: $body);
     }
+
+    // ---------------------------------------------------------------- plán 010: příklad 09 (AI redaktor)
+
+    /** Odstavec o ~330 znacích pro koncepty (tři stejné věty). */
+    private const string EDITOR_PARAGRAPH = 'Docker zabalí aplikaci i se závislostmi do kontejneru, takže redakce spouští stejné prostředí na každém počítači. '
+        . 'Nový kolega nemusí nic instalovat ručně a za pár minut má hotové vývojové prostředí včetně databáze. '
+        . 'Stejný soubor compose.yaml pak popisuje i to, co běží na serveru, a rozdíly mezi stroji mizí.';
+
+    /** Text platného konceptu (≥ 600 znaků, dva mezititulky `## `). */
+    public const string EDITOR_DRAFT_BODY = "## Proč Docker\n\n" . self::EDITOR_PARAGRAPH . "\n\n## Jak začít\n\n" . self::EDITOR_PARAGRAPH;
+
+    /**
+     * Platná osnova (AC 6): titulek, úhel a tři sekce s 1–2 body.
+     *
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    public static function editorOutline(array $overrides = []): array
+    {
+        return $overrides + [
+            'title' => 'Docker v malé redakci',
+            'angle' => 'Praktický pohled na kontejnery pro malý redakční tým.',
+            'sections' => [
+                ['heading' => 'Proč Docker', 'points' => ['Stejné prostředí všude', 'Rychlý start nových lidí']],
+                ['heading' => 'Jak začít', 'points' => ['Soubor compose.yaml v repozitáři']],
+                ['heading' => 'Na co si dát pozor', 'points' => ['Zálohy dat ve volumes', 'Pravidelná aktualizace obrazů']],
+            ],
+        ];
+    }
+
+    /**
+     * Skriptovaný platný koncept (kontrakt plánu 010): titulek „Docker v malé redakci“, perex 60–100 znaků,
+     * text ≥ 600 znaků se dvěma řádky `## …`.
+     *
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    public static function editorDraft(array $overrides = []): array
+    {
+        return $overrides + [
+            'title' => 'Docker v malé redakci',
+            'excerpt' => 'Jak kontejnery pomáhají malé redakci držet stejné prostředí od vývoje po web.',
+            'body' => self::EDITOR_DRAFT_BODY,
+        ];
+    }
+
+    /**
+     * Přepracovaný koncept (krok 4): jiný titulek a navíc oddíl se zdroji.
+     *
+     * @return array<string, mixed>
+     */
+    public static function editorRevisedDraft(string $title = 'Docker v malé redakci: praktický průvodce'): array
+    {
+        return [
+            'title' => $title,
+            'excerpt' => 'Kontejnery v malé redakci: stejné prostředí od vývoje po web, i se zdroji k ověření.',
+            'body' => self::EDITOR_DRAFT_BODY . "\n\n## Zdroje k ověření\n\n- Oficiální dokumentace Dockeru.",
+        ];
+    }
+
+    /** @return array{type: string, severity: string, note: string} */
+    public static function editorIssue(
+        string $type = 'facts',
+        string $severity = 'medium',
+        string $note = 'Doplňte zdroj k tvrzení o rychlém startu nových lidí.',
+    ): array {
+        return ['type' => $type, 'severity' => $severity, 'note' => $note];
+    }
+
+    /**
+     * Sebekontrola (krok 3).
+     *
+     * @param list<mixed> $issues
+     * @return array<string, mixed>
+     */
+    public static function editorReview(string $verdict = 'ok', array $issues = [], ?string $summary = null): array
+    {
+        return [
+            'verdict' => $verdict,
+            'summary' => $summary ?? ($verdict === 'ok' ? 'Koncept odpovídá tématu i osnově.' : 'Koncept je dobrý, ale chybí zdroje.'),
+            'issues' => $issues,
+        ];
+    }
+
+    /** @param array<mixed> $data */
+    public static function editorJson(array $data): string
+    {
+        return json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+    }
 }

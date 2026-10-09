@@ -38,8 +38,8 @@ final class ExampleRegistryTest extends ExampleTestCase
         );
     }
 
-    /** Plán 008, §3 a plán 009, §2: přehled 01–08 (`listing()`), `all()` a `get()` zůstávají jen pro 01–05. */
-    public function test_listing_contains_examples_01_to_08_in_order(): void
+    /** Plán 008, §3, plán 009, §2 a plán 010, §2: přehled 01–09 (`listing()`), `all()` a `get()` zůstávají jen pro 01–05. */
+    public function test_listing_contains_examples_01_to_09_in_order(): void
     {
         $titles = [];
         foreach ($this->registry()->listing() as $example) {
@@ -58,12 +58,14 @@ final class ExampleRegistryTest extends ExampleTestCase
                 '06' => 'Asistent psaní',
                 '07' => 'Zeptej se redakce',
                 '08' => 'Sémantické vyhledávání (RAG)',
+                '09' => 'AI redaktor',
             ],
             $titles,
         );
         self::assertCount(5, $this->registry()->all());
         self::assertNull($this->registry()->get('07'));
         self::assertNull($this->registry()->get('08'));
+        self::assertNull($this->registry()->get('09'));
     }
 
     public function test_get_requires_exact_id(): void

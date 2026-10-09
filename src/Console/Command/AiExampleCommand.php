@@ -11,6 +11,7 @@ use App\Ai\Examples\DemoArticles;
 use App\Ai\Examples\Example06WritingAssistant;
 use App\Ai\Examples\Example07AskNewsroom;
 use App\Ai\Examples\Example08SemanticSearch;
+use App\Ai\Examples\Example09AiEditor;
 use App\Ai\Examples\ExampleContext;
 use App\Ai\Examples\ExampleRegistry;
 use App\Ai\Examples\ExampleResult;
@@ -25,13 +26,14 @@ use App\Console\Output;
 use App\Domain\Ai\TokenUsage;
 
 /**
- * ai:priklad NN – spustí AI příklad 01–08. Volby: `--clanek=` a `--model=` (01–05), `--akce=` a `--text=` (06),
- * `--otazka=` (07 a 08). Z konzole se volání loguje bez uživatele (`userId null`).
+ * ai:priklad NN – spustí AI příklad 01–09. Volby: `--clanek=` a `--model=` (01–05), `--akce=` a `--text=` (06),
+ * `--otazka=` (07 a 08), `--tema=` (09: jen náhled návrhu, nic se neukládá). Z konzole se volání loguje
+ * bez uživatele (`userId null`).
  */
 final readonly class AiExampleCommand implements Command
 {
-    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–08 [--clanek=…] [--model=ID] '
-        . '[--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…]';
+    private const string USAGE = 'Použití: php bin/konzole ai:priklad 01–09 [--clanek=…] [--model=ID] '
+        . '[--akce=pokracuj|zkrat|zjednodus] [--text=…] [--otazka=…] [--tema=…]';
 
     public function __construct(
         private ExampleRegistry $registry,
@@ -39,6 +41,7 @@ final readonly class AiExampleCommand implements Command
         private Example06WritingAssistant $writing,
         private Example07AskNewsroom $askNewsroom,
         private Example08SemanticSearch $semanticSearch,
+        private Example09AiEditor $aiEditor,
     ) {}
 
     public function run(array $arguments, Output $output): int
@@ -55,6 +58,7 @@ final readonly class AiExampleCommand implements Command
                 '06' => $this->runWriting($parsed, $output),
                 '07' => $this->runAskNewsroom($parsed, $output),
                 '08' => $this->runSemanticSearch($parsed, $output),
+                '09' => $this->runAiEditor($parsed, $output),
                 default => $this->runArticleExample($parsed, $output),
             };
         } catch (InvalidExampleInput|InvalidModelOutput|EmbeddingFailed|LlmCallFailed|AiBudgetExceeded $exception) {
@@ -65,7 +69,7 @@ final readonly class AiExampleCommand implements Command
     }
 
     /**
-     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string} $parsed
+     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string, topic: ?string} $parsed
      */
     private function runArticleExample(array $parsed, Output $output): int
     {
@@ -92,7 +96,7 @@ final readonly class AiExampleCommand implements Command
     }
 
     /**
-     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string} $parsed
+     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string, topic: ?string} $parsed
      */
     private function runWriting(array $parsed, Output $output): int
     {
@@ -126,7 +130,7 @@ final readonly class AiExampleCommand implements Command
     }
 
     /**
-     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string} $parsed
+     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string, topic: ?string} $parsed
      */
     private function runAskNewsroom(array $parsed, Output $output): int
     {
@@ -139,7 +143,7 @@ final readonly class AiExampleCommand implements Command
     }
 
     /**
-     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string} $parsed
+     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string, topic: ?string} $parsed
      */
     private function runSemanticSearch(array $parsed, Output $output): int
     {
@@ -152,17 +156,33 @@ final readonly class AiExampleCommand implements Command
     }
 
     /**
+     * Náhled návrhu AI redaktoru. Nic se neukládá: konzole nemá schvalovací krok ani přihlášeného administrátora.
+     *
+     * @param array{id: string, article: string, model: string, action: string, text: ?string, question: ?string, topic: ?string} $parsed
+     */
+    private function runAiEditor(array $parsed, Output $output): int
+    {
+        $proposal = $this->aiEditor->draft($parsed['topic'] ?? Example09AiEditor::DEMO_TOPIC, null);
+
+        $output->line(sprintf('Příklad %s – %s', $this->aiEditor->id(), $this->aiEditor->title()));
+        $this->printResult($proposal->result, $output);
+        $output->line('Návrh se neukládá – uložit ho jako koncept může jen administrátor na /admin/ai/09.');
+
+        return 0;
+    }
+
+    /**
      * @param list<string> $arguments
-     * @return array{id: string, article: string, model: string, action: string, text: ?string, question: ?string}|null
+     * @return array{id: string, article: string, model: string, action: string, text: ?string, question: ?string, topic: ?string}|null
      *         null při špatném zápisu nebo neznámém čísle příkladu
      */
     private function parse(array $arguments): ?array
     {
         $id = null;
-        $options = ['clanek' => DemoArticles::STANDARD, 'model' => '', 'akce' => WritingAction::Continue->value, 'text' => null, 'otazka' => null];
+        $options = ['clanek' => DemoArticles::STANDARD, 'model' => '', 'akce' => WritingAction::Continue->value, 'text' => null, 'otazka' => null, 'tema' => null];
 
         foreach ($arguments as $argument) {
-            if (preg_match('/^--(clanek|model|akce|text|otazka)=(.*)$/s', $argument, $matches) === 1) {
+            if (preg_match('/^--(clanek|model|akce|text|otazka|tema)=(.*)$/s', $argument, $matches) === 1) {
                 $options[$matches[1]] = $matches[2];
             } elseif ($id === null && !str_starts_with($argument, '-')) {
                 $id = $argument;
@@ -171,7 +191,7 @@ final readonly class AiExampleCommand implements Command
             }
         }
 
-        if ($id === null || !in_array($id, ['01', '02', '03', '04', '05', '06', '07', '08'], true)) {
+        if ($id === null || !in_array($id, ['01', '02', '03', '04', '05', '06', '07', '08', '09'], true)) {
             return null;
         }
 
@@ -182,6 +202,7 @@ final readonly class AiExampleCommand implements Command
             'action' => (string) $options['akce'],
             'text' => $options['text'],
             'question' => $options['otazka'],
+            'topic' => $options['tema'],
         ];
     }
 
