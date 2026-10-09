@@ -103,3 +103,17 @@ Otevřené:
 - Cena cache read Sonnet 5.5 v `config/ai-models.php` (0,20 → 0,10 USD/MTok) — samostatný `fix(ai)`; Haiku 4.5 → 5.5 (vyřazení od 15. 10. 2026).
 - **Příklad 10 (MCP server) = M7d**, vlastní plán, nová composer závislost = brána člověka. `AgentLoop` se nevyčleňuje (09 nástroje nepoužívá).
 - Testovací koncepty 47 a 48 v dev DB (a jejich audit) — smazání potřebuje souhlas člověka.
+
+## Stav M7d (plán 011) — příklad 10 hotový, čeká na schválení (Brána 2)
+MCP server redakce (`mcp:server`, STDIO, `mcp/sdk ^0.8.1` izolované v `src/Mcp/NewsroomMcpServer.php`, ADR-0011) a stránka
+`/admin/ai/10` jsou implementované; `make qa` zelená (1822 testů), E2E (curl, STDIO, Playwright) PASS. Revize T7 vrátila
+V1 (Vysoká: rozsah `local` není izolace od relací týmu) — opraveno registrací z prázdného adresáře `~/redakce-mcp`, varováním
+na stránce, druhým blokem „data, ne pokyny“ ve výsledcích a zpřísněným grep testem (N2).
+Otevřené:
+- **Člověk (změna `.claude/settings.json`):** přidat `mcp__redakce` do `deny` a zúžit `Bash(docker compose exec -T app php *)` na
+  `php bin/konzole *` a `php -l *` (dnes povoluje i `php -r` s tajemstvími v prostředí kontejneru `app`).
+- **Živý test AC 23 v Claude Code** (checklist v `tests/E2E-scenare.md`): jen člověk; ověří i to, že `claude mcp list` v kořeni repa server neukáže.
+  Ověřit také chování Claude Code po chybě `server/discover` bez `id` (SDK na STDIO era `2026-07-28` nenabízí); pojistka `MCP_PROTOCOL_NEGOTIATION=legacy`.
+- **S1 (střední, M9):** samostatná služba `mcp-redakce` s účtem `redakce_mcp` (jen `SELECT`), bez `ANTHROPIC_API_KEY` a `DB_MIGRACE_*`, `max_statement_time`.
+- **N1 (nízká):** `PromptData::neutralize` jde obejít homoglyfy a kombinujícími znaky (`˂`, `〈`, U+0338, U+034F, cyrilice); pro krátká témata allowlist.
+- Rate limit AI tras, živý běh příkladu 09, výměna Haiku 4.5 (od 15. 10. 2026), testovací koncepty 47 a 48 v dev DB (a ~170 řádků `ai_calls` z fake klienta).

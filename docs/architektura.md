@@ -164,7 +164,8 @@ Claude Code spustí `docker compose exec -T app php bin/konzole mcp:server` a ml
 čtecí `AgentTool` z 07 (`hledej_clanky`, `nacti_clanek`) a nový `statistiky` → jen veřejné `ArticleRepository` (publikované, čas z `Clock`;
 nová metoda `publishedStatistics`). Žádný `LlmClient`, zápis, `ai_calls` ani přístup k uživatelům, auditu a konceptům (grep test).
 Model je v klientovi, server nic nestojí. `GET /admin/ai/10` (`Admin\McpServerController`) zobrazí návod a stejné definice nástrojů.
-Registrace `claude mcp add --scope local` (mimo repo); `.mcp.json` a `compose.yaml` se nemění.
+Registrace `claude mcp add --scope local` provedená v samostatném prázdném adresáři `~/redakce-mcp` (mimo repo; rozsah `local` platí pro všechny
+relace v daném adresáři, takže rozhoduje izolace adresářem); `.mcp.json` a `compose.yaml` se nemění.
 
 M8 (plán 007, implementováno) — audit log jde `Admin\AuditLogController` (jen `GET /admin/audit`, filtr jako GET formulář
 bez CSRF) → `AuditLogSearch` (Application: validace `akce`/`od`/`do`, 50 na stránku) → `AuditLogRepository::count` +
@@ -204,7 +205,7 @@ flowchart TB
     A -.->|"HTTP :11434 /api/embed, jen EMBED_PROVIDER=ollama"| O
     AD --> D
     CC -->|"docker compose exec app php -l / composer"| A
-    CC -.->|"stdio: docker compose exec -T app php bin/konzole mcp:server<br/>(M7d, MCP server redakce, --scope local)"| A
+    CC -.->|"stdio: docker compose exec -T app php bin/konzole mcp:server<br/>(M7d, MCP server redakce, registrace v ~/redakce-mcp)"| A
     CC -->|"stdio"| PW
     CC -->|"stdio"| MM
     CC -->|"HTTPS"| C7

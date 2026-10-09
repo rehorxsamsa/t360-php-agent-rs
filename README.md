@@ -26,7 +26,7 @@ Verze jsou ty, které běží v prostředí (`composer.json`, `compose.yaml`, `d
 5. **Audit log:** záznam změn s filtrem podle akce a data (časy v UTC, zobrazení v Europe/Prague).
 6. **Vlastní Markdown renderer** pro text článků (ADR-0005), bezpečné HTML.
 7. **Vlastní infrastruktura bez frameworku:** DI kontejner, router, pipeline middlewarů, migrátor databáze, šablony v čistém PHP s escapováním `e()`.
-8. **Konzole** `bin/konzole`: migrace, `admin:vytvor`, `db:seed`, `ai:priklad NN`, `ai:indexuj`.
+8. **Konzole** `bin/konzole`: migrace, `admin:vytvor`, `db:seed`, `ai:priklad NN`, `ai:indexuj`, `mcp:server`.
 9. **Bezpečnost:** CSRF token u každého POST, session cookie `HttpOnly; SameSite=Strict`, bezpečnostní hlavičky, tři databázové účty s odstupňovanými právy (DML, DDL, jen čtení).
 
 ### 3. AI část (zvláštní kapitola)
@@ -46,7 +46,7 @@ Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamov�
 | Náklady | tabulka `ai_calls` (jen metadata: tokeny, cena, trvání, stav – nikdy texty), denní limit tokenů `AI_DENNI_LIMIT_TOKENU` |
 | Bezpečnost LLM | obsah článků i výstup modelu je nedůvěryhodný vstup (obrana proti prompt injection), validace a escapování výstupu, nástroje jen čtou |
 
-**Devět AI příkladů** (`docs/ai-priklady/`, konzole `ai:priklad NN`, v prohlížeči `/admin/ai`):
+**Deset AI příkladů** (`docs/ai-priklady/`, konzole `ai:priklad NN`, v prohlížeči `/admin/ai`):
 
 | # | Příklad | Co ukazuje |
 |---|---|---|
@@ -59,6 +59,7 @@ Vlastní klient bez SDK a bez Composeru: čisté PHP + cURL (ADR-0006, streamov�
 | 07 | Zeptej se redakce | tool use: model sám hledá a čte články |
 | 08 | Sémantické vyhledávání | embeddingy ve sloupci `VECTOR`, vektorový index, odpověď s ověřenými citacemi (RAG) |
 | 09 | AI redaktor | workflow osnova → koncept → sebekontrola → přepracování; člověk ve smyčce, uložení jen jako koncept (LLM06) |
+| 10 | MCP server redakce | redakce jako server Model Context Protocol (STDIO): Claude Code čte publikované články třemi nástroji a promptem; model běží v klientovi |
 
 ### 4. Kvalita a testování
 | Nástroj | Verze | K čemu |
@@ -134,6 +135,7 @@ služby zdravé. Další cíle vypíše `make help`.
 | AI příklad 07, zeptej se redakce (admin) | <http://localhost:8080/admin/ai/07> |
 | AI příklad 08, sémantické vyhledávání s citacemi (admin) | <http://localhost:8080/admin/ai/08> |
 | AI příklad 09, AI redaktor s člověkem ve smyčce (admin) | <http://localhost:8080/admin/ai/09> |
+| AI příklad 10, MCP server redakce: návod k připojení (admin, jen informace) | <http://localhost:8080/admin/ai/10> |
 | Adminer (správa databáze) | <http://localhost:8081> |
 
 Správná odpověď aplikace je `{"stav":"ok","db":"ok"}`. Do Admineru se přihlásíš
@@ -252,6 +254,33 @@ V prohlížeči (admin): <http://localhost:8080/admin/ai/09>, „Navrhnout konce
 (odhad ≈ 0,06 USD a 50 až 90 s za návrh). Výklad je v kapitole [M7c](docs/tutorial.html#m7c), rozhodnutí v
 [ADR-0010](docs/adr/0010-ai-redaktor-workflow-se-schvalenim.md), podklady v `docs/ai-priklady/09.md`.
 
+## AI příklad 10: MCP server redakce (M7d)
+Příklad 10 udělá z redakce server **Model Context Protocol** přes STDIO. Claude Code (model běží u klienta, ne v aplikaci) smí číst **jen publikované
+články** třemi nástroji (`hledej_clanky`, `nacti_clanek`, `statistiky`) a promptem `navrhni_clanek`. Nic nezapisuje a nevolá žádné AI API. Je to první
+běhová závislost projektu: oficiální SDK `mcp/sdk` (0.x, experimentální), izolované v `src/Mcp/`. Ruční zkouška bez Claude Code:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ukazka","version":"1.0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"statistiky","arguments":{}}}' \
+  | docker compose exec -T app php bin/konzole mcp:server
+```
+
+Do Claude Code ho připojí člověk sám, v samostatném prázdném adresáři `~/redakce-mcp` (rozsah `local` platí pro všechny relace Claude Code spuštěné v daném
+adresáři, takže rozhoduje izolace adresářem; `.mcp.json` se nemění, server nepatří do relací s automaticky povoleným Bashem ani do relací agentů v repozitáři):
+
+```bash
+KOREN="$PWD"
+mkdir -p ~/redakce-mcp && cd ~/redakce-mcp
+claude mcp add --transport stdio --scope local redakce -- docker compose -f "$KOREN/compose.yaml" exec -T app php bin/konzole mcp:server
+cd ~/redakce-mcp && claude mcp list     # ověření; Claude Code se k serveru spouští z tohoto adresáře
+```
+
+Na stdout smí jít jen protokol (logy na stderr). Text článků je nedůvěryhodný a jde do silnějšího agenta než v příkladu 07, proto platí izolace adresářem
+a ruční potvrzování volání. **Živý test v Claude Code zatím neproběhl.** Návod je na <http://localhost:8080/admin/ai/10>, výklad v kapitole
+[M7d](docs/tutorial.html#m7d), rozhodnutí v [ADR-0011](docs/adr/0011-mcp-server-redakce-sdk-a-stdio.md), podklady v `docs/ai-priklady/10.md`.
+
 Testy: `make test` (nebo `make qa`). Integrační testy schématu mažou a znovu vytvářejí tabulky
 v databázi `redakce_test`, proto dvě sady testů nesmí běžet paralelně nad `redakce_test`.
 
@@ -284,7 +313,7 @@ a pro vývoj stačí. Chceš-li začít znovu s novými hesly, smaž volume: `ma
 | `templates/` | PHP šablony (`layout`, `home`, `article`, `error`, `admin/`, `admin/articles/`, `admin/ai/`), výstup přes `e()` |
 | `database/seeds/` | ukázková data (`demo_content.php`), nahrává je `make seed` |
 | `database/migrations/` | migrace schématu (`RRRRMMDDHHMM_popis.php`) |
-| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed`, `ai:priklad NN`, `ai:indexuj` |
+| `bin/konzole` | CLI: `migrace:spust`, `migrace:vrat [--kroky=N]`, `migrace:stav`, `admin:vytvor`, `db:seed`, `ai:priklad NN`, `ai:indexuj`, `mcp:server` |
 | `docker/`, `compose.yaml`, `Makefile` | prostředí v Dockeru |
 | `.claude/`, `.mcp.json`, `.githooks/` | tým agentů, hooky, MCP servery |
 | `docs/` | zadání, architektura, ADR, plány, tutoriál |
