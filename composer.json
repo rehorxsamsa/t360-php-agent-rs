@@ -8,7 +8,8 @@
         "ext-curl": "*",
         "ext-json": "*",
         "ext-pdo": "*",
-        "ext-pdo_mysql": "*"
+        "ext-pdo_mysql": "*",
+        "mcp/sdk": "^0.8.1"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3",
@@ -34,7 +35,10 @@
         },
         "sort-packages": true,
         "optimize-autoloader": true,
-        "process-timeout": 0
+        "process-timeout": 0,
+        "allow-plugins": {
+            "php-http/discovery": false
+        }
     },
     "scripts": {
         "lint": "find src tests public config templates database -name '*.php' -print0 2>/dev/null | xargs -0 -r -n1 -P4 php -d display_errors=stderr -d log_errors=0 -l > /dev/null && php -d display_errors=stderr -d log_errors=0 -l bin/konzole > /dev/null",
