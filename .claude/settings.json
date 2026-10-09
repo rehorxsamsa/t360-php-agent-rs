@@ -4,10 +4,12 @@
     "defaultMode": "acceptEdits",
     "allow": [
       "Bash(docker compose exec -T app composer *)",
-      "Bash(docker compose exec -T app php *)",
+      "Bash(docker compose exec -T app php bin/konzole *)",
+      "Bash(docker compose exec -T app php -l *)",
+      "Bash(docker compose exec app php bin/konzole *)",
+      "Bash(docker compose exec app php -l *)",
       "Bash(docker compose exec -T app vendor/bin/*)",
       "Bash(docker compose exec app composer *)",
-      "Bash(docker compose exec app php *)",
       "Bash(docker compose exec app vendor/bin/*)",
       "Bash(docker compose ps*)",
       "Bash(docker compose logs*)",
@@ -90,7 +92,8 @@
       "mcp__github__update_*",
       "mcp__github__delete_*",
       "mcp__github__merge_*",
-      "mcp__github__push_*"
+      "mcp__github__push_*",
+      "mcp__redakce"
     ]
   },
   "env": {
