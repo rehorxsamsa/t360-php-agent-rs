@@ -149,13 +149,13 @@ final class AdminAiSemanticSearchTest extends AdminAiM7TestCase
         self::assertSame(405, $this->get(self::INDEX_PATH)->status);
     }
 
-    /** Plán 010 (záměrná regrese M7b): 09 už existuje, neexistující je nově 10. */
-    public function test_example_10_is_404(): void
+    /** Plán 010 a 011 (záměrné regrese M7b, M7c): 09 a 10 už existují, neexistující je nově 11. */
+    public function test_example_11_is_404(): void
     {
         $this->signIn();
 
-        self::assertSame(404, $this->get('/admin/ai/10')->status);
-        self::assertSame(404, $this->post('/admin/ai/10', ['question' => self::DEMO_QUESTION])->status);
+        self::assertSame(404, $this->get('/admin/ai/11')->status);
+        self::assertSame(404, $this->post('/admin/ai/11', ['question' => self::DEMO_QUESTION])->status);
     }
 
     // ---------------------------------------------------------------- AC 24: stránka
@@ -454,8 +454,8 @@ final class AdminAiSemanticSearchTest extends AdminAiM7TestCase
             self::assertStringContainsString(sprintf('<a href="/admin/ai/%s">%s – %s</a>', $id, $id, e($title)), $body);
         }
         $listing = $this->container->get(ExampleRegistry::class)->listing();
-        // Plán 010 (záměrná regrese M7b): přehled má nově i 09 (ověřuje AdminAiEditorTest).
-        self::assertCount(9, $listing);
+        // Plán 010 a 011 (záměrné regrese M7b, M7c): přehled má nově i 09 a 10 (ověřují AdminAiEditorTest a AdminMcpServerPageTest).
+        self::assertCount(10, $listing);
         foreach ($listing as $example) {
             self::assertStringContainsString(e($example->description()), $body, 'Popis příkladu ' . $example->id());
         }

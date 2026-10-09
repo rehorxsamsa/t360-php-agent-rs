@@ -399,9 +399,9 @@ final class AdminAiTest extends TestCase
     /** @return iterable<string, array{string, string}> */
     public static function missingExamples(): iterable
     {
-        // Plán 008 (záměrná regrese M6): 06 a 07 už existují; plán 009 (regrese M7): i 08; plán 010 (regrese M7b): i 09,
-        // neexistující je nově 10.
-        foreach (['00', '10', '1', 'abc'] as $id) {
+        // Plán 008 (záměrná regrese M6): 06 a 07 už existují; plán 009 (regrese M7): i 08; plán 010 (regrese M7b): i 09;
+        // plán 011 (regrese M7c): i 10 (POST na 10 je dál 404, ověřuje AdminMcpServerPageTest), neexistující je nově 11.
+        foreach (['00', '11', '1', 'abc'] as $id) {
             yield 'GET ' . $id => ['GET', '/admin/ai/' . $id];
             yield 'POST ' . $id => ['POST', '/admin/ai/' . $id];
         }

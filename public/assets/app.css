@@ -423,6 +423,33 @@ ul.form-error {
     padding-left: 1.25rem;
 }
 
+/* AI příklad 10: návod k MCP serveru – příkaz, schémata a prompt v <pre>; dlouhé řádky se na úzkém displeji posouvají. */
+.mcp-section {
+    margin-top: 2rem;
+}
+
+.mcp-code {
+    max-width: 100%;
+    margin: 0.5rem 0 1rem;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    background: #f6f8fa;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.875rem;
+}
+
+.mcp-code code {
+    font-size: inherit;
+}
+
+/* Souvislý text (instrukce serveru, náhled promptu) se zalamuje; příkazy a schémata zůstávají na řádcích. */
+.mcp-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 /* AI příklad 06: živý výstup proudu (jen text, zalomení řádků zachovaná) a tlačítko „Přerušit“. */
 .ai-stream-buttons {
     display: flex;

@@ -178,12 +178,12 @@ final class AdminAiEditorTest extends AdminAiM7TestCase
         self::assertSame(405, $this->get(self::DISCARD_PATH)->status);
     }
 
-    public function test_example_10_is_404(): void
+    public function test_example_11_is_404(): void
     {
         $this->signIn();
 
-        self::assertSame(404, $this->get('/admin/ai/10')->status);
-        self::assertSame(404, $this->post('/admin/ai/10', ['topic' => self::DEMO_TOPIC])->status);
+        self::assertSame(404, $this->get('/admin/ai/11')->status);
+        self::assertSame(404, $this->post('/admin/ai/11', ['topic' => self::DEMO_TOPIC])->status);
         self::assertSame([], $this->aiCalls->calls);
     }
 
@@ -546,7 +546,8 @@ final class AdminAiEditorTest extends AdminAiM7TestCase
             self::assertStringContainsString(sprintf('<a href="/admin/ai/%s">%s – %s</a>', $id, $id, e($title)), $body);
         }
         $listing = $this->container->get(ExampleRegistry::class)->listing();
-        self::assertCount(9, $listing);
+        // Plán 011 (záměrná regrese M7c): přehled má nově i 10 (ověřuje AdminMcpServerPageTest).
+        self::assertCount(10, $listing);
         foreach ($listing as $example) {
             self::assertStringContainsString(e($example->description()), $body, 'Popis příkladu ' . $example->id());
         }

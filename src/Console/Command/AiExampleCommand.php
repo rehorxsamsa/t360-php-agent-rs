@@ -12,6 +12,7 @@ use App\Ai\Examples\Example06WritingAssistant;
 use App\Ai\Examples\Example07AskNewsroom;
 use App\Ai\Examples\Example08SemanticSearch;
 use App\Ai\Examples\Example09AiEditor;
+use App\Ai\Examples\Example10McpServer;
 use App\Ai\Examples\ExampleContext;
 use App\Ai\Examples\ExampleRegistry;
 use App\Ai\Examples\ExampleResult;
@@ -26,7 +27,8 @@ use App\Console\Output;
 use App\Domain\Ai\TokenUsage;
 
 /**
- * ai:priklad NN – spustí AI příklad 01–09. Volby: `--clanek=` a `--model=` (01–05), `--akce=` a `--text=` (06),
+ * ai:priklad NN – spustí AI příklad 01–09 (10 je MCP server, tady jen odkáže na `mcp:server`).
+ * Volby: `--clanek=` a `--model=` (01–05), `--akce=` a `--text=` (06),
  * `--otazka=` (07 a 08), `--tema=` (09: jen náhled návrhu, nic se neukládá). Z konzole se volání loguje
  * bez uživatele (`userId null`).
  */
@@ -42,6 +44,7 @@ final readonly class AiExampleCommand implements Command
         private Example07AskNewsroom $askNewsroom,
         private Example08SemanticSearch $semanticSearch,
         private Example09AiEditor $aiEditor,
+        private Example10McpServer $mcpServer,
     ) {}
 
     public function run(array $arguments, Output $output): int
@@ -59,6 +62,7 @@ final readonly class AiExampleCommand implements Command
                 '07' => $this->runAskNewsroom($parsed, $output),
                 '08' => $this->runSemanticSearch($parsed, $output),
                 '09' => $this->runAiEditor($parsed, $output),
+                '10' => $this->explainMcpServer($output),
                 default => $this->runArticleExample($parsed, $output),
             };
         } catch (InvalidExampleInput|InvalidModelOutput|EmbeddingFailed|LlmCallFailed|AiBudgetExceeded $exception) {
@@ -171,6 +175,19 @@ final readonly class AiExampleCommand implements Command
         return 0;
     }
 
+    /** Příklad 10 nemá co spustit z konzole: MCP server startuje klient (Claude Code) příkazem `mcp:server`. */
+    private function explainMcpServer(Output $output): int
+    {
+        $output->error(sprintf(
+            'Příklad %s (%s) se nespouští přes ai:priklad: php bin/konzole mcp:server, návod je na /admin/ai/%s.',
+            $this->mcpServer->id(),
+            $this->mcpServer->title(),
+            $this->mcpServer->id(),
+        ));
+
+        return 1;
+    }
+
     /**
      * @param list<string> $arguments
      * @return array{id: string, article: string, model: string, action: string, text: ?string, question: ?string, topic: ?string}|null
@@ -191,7 +208,7 @@ final readonly class AiExampleCommand implements Command
             }
         }
 
-        if ($id === null || !in_array($id, ['01', '02', '03', '04', '05', '06', '07', '08', '09'], true)) {
+        if ($id === null || !in_array($id, ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'], true)) {
             return null;
         }
 

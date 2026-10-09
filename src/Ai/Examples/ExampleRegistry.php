@@ -6,7 +6,7 @@ namespace App\Ai\Examples;
 
 /**
  * Přehled AI příkladů. `all()`/`get()` vracejí jen „článkové“ příklady 01–05 (spouští je `ExampleRunner`),
- * `listing()` všechny příklady 01–09 pro přehled v administraci (06–09 mají vlastní stránky a vstup).
+ * `listing()` všechny příklady 01–10 pro přehled v administraci (06–10 mají vlastní stránky; 10 je MCP server bez vstupu).
  */
 final readonly class ExampleRegistry
 {
@@ -26,12 +26,13 @@ final readonly class ExampleRegistry
         Example07AskNewsroom $askNewsroom,
         Example08SemanticSearch $semanticSearch,
         Example09AiEditor $aiEditor,
+        Example10McpServer $mcpServer,
     ) {
         $this->examples = [$excerpt, $seo, $classification, $review, $translation];
-        $this->listing = [...$this->examples, $writing, $askNewsroom, $semanticSearch, $aiEditor];
+        $this->listing = [...$this->examples, $writing, $askNewsroom, $semanticSearch, $aiEditor, $mcpServer];
     }
 
-    /** @return list<ExampleDescription> příklady 01–09 seřazené podle čísla */
+    /** @return list<ExampleDescription> příklady 01–10 seřazené podle čísla */
     public function listing(): array
     {
         return $this->listing;

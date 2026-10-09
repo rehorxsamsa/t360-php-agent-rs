@@ -22,6 +22,7 @@ use App\Ai\StreamingLlmClient;
 use App\Console\Command\AiExampleCommand;
 use App\Console\Command\CreateAdminCommand;
 use App\Console\Command\IndexArticlesCommand;
+use App\Console\Command\McpServerCommand;
 use App\Console\Command\MigrateCommand;
 use App\Console\Command\MigrationStatusCommand;
 use App\Console\Command\RollbackCommand;
@@ -171,6 +172,7 @@ $container->set(
         'db:seed' => SeedCommand::class,
         'ai:priklad' => AiExampleCommand::class,
         'ai:indexuj' => IndexArticlesCommand::class,
+        'mcp:server' => McpServerCommand::class,
     ]),
 );
 

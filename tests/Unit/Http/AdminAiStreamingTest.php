@@ -134,13 +134,13 @@ final class AdminAiStreamingTest extends AdminAiM7TestCase
         self::assertSame(405, $this->get(self::STREAM_PATH)->status);
     }
 
-    /** Plán 009 a 010 (záměrné regrese M7, M7b): 08 a 09 už existují, neexistující je nově 10. */
-    public function test_example_10_is_404(): void
+    /** Plán 009, 010 a 011 (záměrné regrese M7, M7b, M7c): 08, 09 a 10 už existují, neexistující je nově 11. */
+    public function test_example_11_is_404(): void
     {
         $this->signIn();
 
-        self::assertSame(404, $this->get('/admin/ai/10')->status);
-        self::assertSame(404, $this->post('/admin/ai/10', ['article' => 'demo'])->status);
+        self::assertSame(404, $this->get('/admin/ai/11')->status);
+        self::assertSame(404, $this->post('/admin/ai/11', ['article' => 'demo'])->status);
     }
 
     // ---------------------------------------------------------------- AC 25: stránka 06

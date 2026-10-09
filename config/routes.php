@@ -9,6 +9,7 @@ use App\Http\Controller\Admin\AskNewsroomController;
 use App\Http\Controller\Admin\AuditLogController;
 use App\Http\Controller\Admin\DashboardController;
 use App\Http\Controller\Admin\LoginController;
+use App\Http\Controller\Admin\McpServerController;
 use App\Http\Controller\Admin\SemanticSearchController;
 use App\Http\Controller\Admin\WritingAssistantController;
 use App\Http\Controller\ArticleController;
@@ -37,7 +38,7 @@ return static function (Router $router): void {
     $router->get('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'confirmDelete']);
     $router->post('/admin/clanky/{id}/smazat', [AdminArticleController::class, 'delete']);
     $router->get('/admin/ai', [AiController::class, 'index']);
-    // Příklady 06–09 mají vlastní stránky; musí stát PŘED obecnou trasou /admin/ai/{example} (router bere první shodu).
+    // Příklady 06–10 mají vlastní stránky; musí stát PŘED obecnou trasou /admin/ai/{example} (router bere první shodu).
     $router->get('/admin/ai/06', [WritingAssistantController::class, 'show']);
     $router->post('/admin/ai/06/proud', [WritingAssistantController::class, 'stream']);
     $router->get('/admin/ai/07', [AskNewsroomController::class, 'show']);
@@ -50,6 +51,8 @@ return static function (Router $router): void {
     $router->post('/admin/ai/09', [AiEditorController::class, 'draft']);
     $router->post('/admin/ai/09/ulozit', [AiEditorController::class, 'save']);
     $router->post('/admin/ai/09/zahodit', [AiEditorController::class, 'discard']);
+    // 10 – MCP server redakce: jen informační GET (žádná akce; POST /admin/ai/10 propadne obecné trase a skončí 404).
+    $router->get('/admin/ai/10', [McpServerController::class, 'show']);
     $router->get('/admin/ai/{example}', [AiController::class, 'show']);
     $router->post('/admin/ai/{example}', [AiController::class, 'run']);
     $router->get('/admin/audit', [AuditLogController::class, 'index']);

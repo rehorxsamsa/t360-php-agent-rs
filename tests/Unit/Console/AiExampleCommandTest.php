@@ -124,7 +124,8 @@ final class AiExampleCommandTest extends TestCase
     public static function invalidArguments(): iterable
     {
         yield 'no example' => [['ai:priklad']];
-        yield 'example 10' => [['ai:priklad', '10']];
+        // Plán 011 (záměrná regrese jen pro 10): 10 má vlastní hlášku, neexistující je nově 11.
+        yield 'example 11' => [['ai:priklad', '11']];
         yield 'unknown writing action' => [['ai:priklad', '06', '--akce=xyz']];
         yield 'example 1' => [['ai:priklad', '1']];
         yield 'unknown option' => [['ai:priklad', '01', '--neco=1']];
@@ -139,6 +140,21 @@ final class AiExampleCommandTest extends TestCase
 
         self::assertSame(1, $code);
         self::assertStringContainsString(self::USAGE, $this->allOutput());
+        self::assertSame([], $this->aiCalls->calls);
+    }
+
+    /** Plán 011, AC 17: příklad 10 je MCP server, spouští ho Claude Code přes `mcp:server`, ne ai:priklad. */
+    public function test_example_10_points_to_mcp_server_command(): void
+    {
+        $code = $this->runCommand(['ai:priklad', '10']);
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString(
+            'Příklad 10 (MCP server redakce) se nespouští přes ai:priklad: php bin/konzole mcp:server, návod je na /admin/ai/10.',
+            $this->read($this->stderr),
+        );
+        self::assertSame('', $this->read($this->stdout));
+        self::assertStringNotContainsString(self::USAGE, $this->allOutput());
         self::assertSame([], $this->aiCalls->calls);
     }
 
