@@ -5,6 +5,16 @@ tým agentů v Claude Code, člověk zadává a schvaluje. Podrobný návod je v
 [`docs/tutorial.html`](docs/tutorial.html), pravidla pro agenty v [`AGENTS.md`](AGENTS.md)
 a [`CLAUDE.md`](CLAUDE.md).
 
+## Ukázky
+Titulní stránka (<http://localhost:8080/>):
+
+![Titulní stránka s nejnovějšími články](docs/img/home.png)
+
+Přehled AI nástrojů v administraci (<http://localhost:8080/admin/ai>, jen přihlášený admin; snímek je s falešným
+poskytovatelem, bez API klíče):
+
+![Přehled AI nástrojů v administraci](docs/img/admin-ai.png)
+
 ## Použité technologie, funkcionality a dovednosti
 Řazeno od nejdůležitějšího (to, bez čeho aplikace nefunguje a co ji definuje) po podpůrné nástroje.
 Verze jsou ty, které běží v prostředí (`composer.json`, `compose.yaml`, `docker/`).
