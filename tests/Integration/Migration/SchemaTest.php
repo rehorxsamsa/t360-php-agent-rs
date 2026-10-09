@@ -83,7 +83,7 @@ final class SchemaTest extends TestCase
         );
         $byName = array_column($rows, null, 'TABLE_NAME');
 
-        foreach (['users', 'categories', 'tags', 'articles', 'article_tags', 'audit_log', 'ai_calls', 'article_embeddings', 'migrations'] as $table) {
+        foreach (['users', 'categories', 'tags', 'articles', 'article_tags', 'audit_log', 'ai_calls', 'article_embeddings', 'ai_rate_limit_hits', 'migrations'] as $table) {
             self::assertArrayHasKey($table, $byName, $table);
             self::assertSame('InnoDB', $byName[$table]['ENGINE'], $table);
             self::assertSame('utf8mb4_czech_ci', $byName[$table]['TABLE_COLLATION'], $table);
@@ -155,7 +155,7 @@ final class SchemaTest extends TestCase
         self::assertSame(['migrations'], $tables);
         self::assertSame(0, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM migrations'));
 
-        self::assertCount(8, $this->migrator->migrate());
+        self::assertCount(9, $this->migrator->migrate());
     }
 
     // ---------------------------------------------------------------- plán 006, AC 20: ai_calls
@@ -247,8 +247,8 @@ final class SchemaTest extends TestCase
         self::assertNotNull($code);
     }
 
-    /** Plán 009, AC 18 (záměrná regrese M6): poslední migrace je nově article_embeddings, ai_calls zůstává. */
-    public function test_rolling_back_last_migration_drops_only_article_embeddings(): void
+    /** Plán 013, AC 22 (záměrná regrese plánu 009): poslední migrace je nově ai_rate_limit_hits, ostatní tabulky zůstávají. */
+    public function test_rolling_back_last_migration_drops_only_ai_rate_limit_hits(): void
     {
         $this->migrator->rollback(1);
 
@@ -256,17 +256,19 @@ final class SchemaTest extends TestCase
             $this->pdo,
             'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
         );
-        self::assertNotContains('article_embeddings', $tables);
+        self::assertNotContains('ai_rate_limit_hits', $tables);
+        self::assertContains('article_embeddings', $tables);
         self::assertContains('ai_calls', $tables);
-        self::assertContains('articles', $tables);
+        self::assertContains('users', $tables);
         self::assertCount(1, $this->migrator->migrate());
-        self::assertContains('article_embeddings', TestDatabase::column(
+        self::assertContains('ai_rate_limit_hits', TestDatabase::column(
             $this->pdo,
             'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
         ));
     }
 
-    public function test_rolling_back_two_migrations_drops_article_embeddings_and_ai_calls(): void
+    /** Plán 013 (záměrná regrese plánu 009): dvě poslední migrace jsou ai_rate_limit_hits a article_embeddings. */
+    public function test_rolling_back_two_migrations_drops_ai_rate_limit_hits_and_article_embeddings(): void
     {
         $this->migrator->rollback(2);
 
@@ -274,10 +276,23 @@ final class SchemaTest extends TestCase
             $this->pdo,
             'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
         );
+        self::assertNotContains('ai_rate_limit_hits', $tables);
         self::assertNotContains('article_embeddings', $tables);
+        self::assertContains('ai_calls', $tables);
+        self::assertCount(2, $this->migrator->migrate());
+    }
+
+    public function test_rolling_back_three_migrations_also_drops_ai_calls(): void
+    {
+        $this->migrator->rollback(3);
+
+        $tables = TestDatabase::column(
+            $this->pdo,
+            'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
+        );
         self::assertNotContains('ai_calls', $tables);
         self::assertContains('audit_log', $tables);
-        self::assertCount(2, $this->migrator->migrate());
+        self::assertCount(3, $this->migrator->migrate());
     }
 
     // ---------------------------------------------------------------- plán 009, AC 18: article_embeddings
@@ -384,5 +399,88 @@ final class SchemaTest extends TestCase
 
         self::assertNotNull($wrongDimension, 'VECTOR(768) nesmí přijmout 3 složky.');
         self::assertSame(1452, $unknownArticle);
+    }
+
+    // ---------------------------------------------------------------- plán 013, AC 22: ai_rate_limit_hits
+
+    public function test_ai_rate_limit_hits_table_has_expected_columns(): void
+    {
+        $rows = TestDatabase::rows(
+            $this->pdo,
+            "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_rate_limit_hits' ORDER BY ORDINAL_POSITION",
+        );
+        $columns = array_column($rows, null, 'COLUMN_NAME');
+
+        self::assertSame(['id', 'user_id', 'bucket', 'created_at'], array_keys($columns));
+        $expected = [
+            'id' => ['bigint(20) unsigned', 'NO'],
+            'user_id' => ['bigint(20) unsigned', 'NO'],
+            'bucket' => ['varchar(20)', 'NO'],
+            'created_at' => ['datetime(6)', 'NO'],
+        ];
+        foreach ($expected as $name => [$type, $nullable]) {
+            self::assertSame($type, $columns[$name]['COLUMN_TYPE'], $name);
+            self::assertSame($nullable, $columns[$name]['IS_NULLABLE'], $name);
+        }
+        self::assertStringContainsString('auto_increment', $columns['id']['EXTRA']);
+        // Bez DEFAULT: čas vždy dodává Clock aplikace (ADR-0007). Chybějící výchozí hodnota je v information_schema
+        // NULL (TestDatabase::rows z ní udělá ''); DEFAULT NULL by MariaDB hlásila jako text 'NULL'.
+        self::assertSame('', $columns['created_at']['COLUMN_DEFAULT'], 'created_at nesmí mít DEFAULT.');
+        self::assertSame(
+            ['id'],
+            TestDatabase::column(
+                $this->pdo,
+                "SELECT COLUMN_NAME FROM information_schema.STATISTICS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_rate_limit_hits' AND INDEX_NAME = 'PRIMARY'",
+            ),
+        );
+    }
+
+    public function test_ai_rate_limit_hits_has_window_index_and_cascading_user_foreign_key(): void
+    {
+        self::assertSame(
+            ['user_id', 'bucket', 'created_at'],
+            TestDatabase::column(
+                $this->pdo,
+                "SELECT COLUMN_NAME FROM information_schema.STATISTICS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_rate_limit_hits'
+                   AND INDEX_NAME = 'idx_ai_rate_limit_hits_user_bucket_created'
+                 ORDER BY SEQ_IN_INDEX",
+            ),
+        );
+
+        $constraints = TestDatabase::rows(
+            $this->pdo,
+            "SELECT REFERENCED_TABLE_NAME, DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS
+             WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_rate_limit_hits'
+               AND CONSTRAINT_NAME = 'fk_ai_rate_limit_hits_user_id'",
+        );
+        self::assertSame([['REFERENCED_TABLE_NAME' => 'users', 'DELETE_RULE' => 'CASCADE']], $constraints);
+    }
+
+    public function test_ai_rate_limit_hit_without_created_at_or_with_unknown_user_is_rejected(): void
+    {
+        $userId = $this->insertUser();
+
+        $withoutTime = $this->errorCodeOf(fn() => $this->pdo->exec(
+            "INSERT INTO ai_rate_limit_hits (user_id, bucket) VALUES ($userId, 'ai')",
+        ));
+        $unknownUser = $this->errorCodeOf(fn() => $this->pdo->exec(
+            "INSERT INTO ai_rate_limit_hits (user_id, bucket, created_at) VALUES (999999, 'ai', '2026-10-09 12:00:00')",
+        ));
+
+        self::assertNotNull($withoutTime, 'Bez created_at (strict mode) se řádek nevloží.');
+        self::assertSame(1452, $unknownUser, 'FK na users.');
+    }
+
+    public function test_deleting_user_deletes_his_rate_limit_hits(): void
+    {
+        $userId = $this->insertUser();
+        $this->pdo->exec("INSERT INTO ai_rate_limit_hits (user_id, bucket, created_at) VALUES ($userId, 'ai', '2026-10-09 12:00:00.000001')");
+
+        $this->pdo->exec('DELETE FROM users WHERE id = ' . $userId);
+
+        self::assertSame(0, TestDatabase::count($this->pdo, 'SELECT COUNT(*) FROM ai_rate_limit_hits'));
     }
 }
