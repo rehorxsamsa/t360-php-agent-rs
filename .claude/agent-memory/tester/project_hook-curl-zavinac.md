@@ -49,6 +49,10 @@ Režim B plán 012 (2026-10-09): když `.env` ještě nemá novou hodnotu (měn�
 `docker compose exec -T -e AI_MODEL_LEVNY=… app php bin/konzole …` (`.env` se nemění); web/Playwright ale běží se
 starým `.env` → kroky závislé na env označit „čeká na .env“. Playwright session může být už přihlášená (login přeskočit).
 
+Režim B plán 013 (2026-10-09): rate limit je na uživatele, ne na session → curl vyčerpá limit a Playwright (jiná session,
+stejný admin) ho hned vidí; L3 curl a L4 Playwright stihnout do 60 s (jeden `run_code_unsafe`), čekání přes `browser_wait_for`.
+Cookie/_csrf mezi Bash voláními předávat souborem ve scratchpadu (`. sess`). Hodnota „fake“ poskytovatele je `falesny`.
+
 **Why:** hook chrání před `curl -d @soubor` (exfiltrace souborů); kontroluje text příkazu, ne sémantiku.
 **How to apply:** úpravy `tests/E2E-scenare.md` dělat nástrojem Edit/Write, ne přes Bash; v curl příkladech psát
 zavináč jako `%40`, URL bez uvozovek. V režimu A s paralelním programátorem nespouštět integrační testy

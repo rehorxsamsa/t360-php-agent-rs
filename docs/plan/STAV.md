@@ -99,7 +99,7 @@ Příklad 09 (AI redaktor, workflow s člověkem ve smyčce; ADR-0010) je implem
 E2E Q1–Q5 a Q7 prošly (Playwright + curl), bezpečnostní revize bez kritických/vysokých nálezů; nízké nálezy 2 a 3
 (tvrdý limit 110 s před každým krokem, neutralizace zero-width/`＜`/entit) opraveny. Kapitola M7c je v tutoriálu.
 Otevřené:
-- **Rate limit AI tras** (nález 1, střední, LLM10) — udělat před zapnutím skutečného poskytovatele; platí i pro `/admin/ai/06`–`09`.
+- ~~Rate limit AI tras~~ — hotovo (plán 013, ADR-0013); backlog z revize viz „Stav M7e“.
 - **Živý běh s reálným API (AC 30, Q6)** — jen člověk; cena ≈ 0,06 USD a doba 50–90 s jsou zatím odhad.
 - Cena cache read Sonnet 5.5 opravena na 0,10 USD/MTok a Haiku 4.5 → 5.5 (plán 012). Čeká: úprava `.env` člověkem (`AI_MODEL_LEVNY=claude-haiku-5-5`, pak `make up`) a živý běh AC 19.
 - **Příklad 10 (MCP server) = M7d**, vlastní plán, nová composer závislost = brána člověka. `AgentLoop` se nevyčleňuje (09 nástroje nepoužívá).
@@ -117,4 +117,15 @@ Otevřené:
   Ověřit také chování Claude Code po chybě `server/discover` bez `id` (SDK na STDIO era `2026-07-28` nenabízí); pojistka `MCP_PROTOCOL_NEGOTIATION=legacy`.
 - **S1 (střední, M9):** samostatná služba `mcp-redakce` s účtem `redakce_mcp` (jen `SELECT`), bez `ANTHROPIC_API_KEY` a `DB_MIGRACE_*`, `max_statement_time`.
 - **N1 (nízká):** `PromptData::neutralize` jde obejít homoglyfy a kombinujícími znaky (`˂`, `〈`, U+0338, U+034F, cyrilice); pro krátká témata allowlist.
-- Rate limit AI tras, živý běh příkladu 09, testovací koncepty 47 a 48 v dev DB (a ~170 řádků `ai_calls` z fake klienta).
+- Živý běh příkladu 09, testovací koncepty 47 a 48 v dev DB (a ~170 řádků `ai_calls` z fake klienta).
+
+## Stav M7e (plán 013) — rate limit AI tras hotový (2026-10-09)
+Běžné AI akce 10/60 s, AI redaktor (09) 3/600 s na uživatele, 429 + `Retry-After`, audit `ai.rate_limited`, tabulka
+`ai_rate_limit_hits`. `make qa` zelená (1952 testů), E2E (curl, Playwright) PASS, revize T5 bez kritických/vysokých nálezů.
+Nález 3 (neznámá POST trasa pod `/admin/ai/` dostane běžný kbelík) opraven. Schváleno člověkem.
+Backlog z revize:
+- **Střední:** limit souběhu (víc záložek/session obsadí PHP-FPM workery; u 09 lze limit obejít až o N−1) — `GET_LOCK` nebo samostatný FPM pool.
+- **Nízká:** audit odmítnutí neomezený (auditovat jen první v okně; spojit s limitem přihlášení v M9).
+- **Nízká:** chybná `AI_LIMIT_*` shodí celý web (R6) — ověření konfigurace při nasazení nebo líné sestavení.
+- **Info:** surová cesta v shrnutí auditu (použít vzor trasy); jarní posun času (R5), případně ukládat v UTC.
+- Neověřeno v prohlížeči: limit 09 (L5) a přepsání limitu z prostředí (L6) — jen unit testy; živý běh AC 27 jen člověk.

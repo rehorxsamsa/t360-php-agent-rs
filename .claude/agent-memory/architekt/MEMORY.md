@@ -1,8 +1,8 @@
 - [Výukový režim](project_vyukovy-rezim.md) — od 2026-10-03 MVP plány, bez security review, u otázek vždy doporučení
-- [DB názvy, migrace, seed, časy](project_db-nazvy-a-migrace.md) — ADR-0004 anglicky, číslování (007 = M8, 008 = M7, 009 = M7b, 010 = M7c, 011 = M7d), ADR-0007 UTC vs Praha
+- [DB názvy, migrace, seed, časy](project_db-nazvy-a-migrace.md) — ADR-0004 anglicky, číslování (007 = M8 … 011 = M7d, 013 = rate limit), ADR-0007 UTC vs Praha
 - [Fakta Claude API](project_ai-api-fakta.md) — 2026-10-09: cache Sonnet 0,10 potvrzeno, Haiku 5.5 pásma >100k, thinking v max_tokens, Haiku 4.5 nedeprecated
 - [Fakta RAG a embeddingů](project_rag-embeddingy-fakta.md) — 2026-10-08: VECTOR post-filtr, Ollama embeddinggemma 768, Voyage ≠ 768, search_result citace
 - [Fakta MCP](project_mcp-fakta.md) — 2026-10-09: mcp/sdk 0.8.1 (0.x láme), éry 2025-11-25/2026-07-28, claude mcp add, argumenty promptu dělené mezerami
-- [Omezení prostředí pro AC](project_omezeni-prostredi-pro-ac.md) — curl hook, Playwright reálně na localhost, 422 bez textu, .env v app není
+- [Omezení prostředí pro AC](project_omezeni-prostredi-pro-ac.md) — curl hook, Playwright na localhost, 422 bez textu, .env v app není, middleware eager, IP nepoužitelná
 - [Sandbox Claude Code](project_sandbox-claude-code-fakta.md) — 2026-10-09: ADR-0012, Docker jen přes úzké excludedCommands, seccomp, bypass v local
 - [Zápis výstupu AI a LLM06](project_ai-zapis-llm06.md) — ADR-0010: workflow bez nástrojů, návrh v session, zápis jen POST admina, AgentLoop ne

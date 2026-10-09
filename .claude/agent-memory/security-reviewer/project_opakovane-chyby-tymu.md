@@ -70,6 +70,18 @@ Nalezeno při revizi M1 (plán 001, kola 1–3, 2026-10-03). Při další revizi
     značky – ověřeno. (c) grep testy hranic (`McpSourceRulesTest`) nemají `$_SERVER`/`putenv`/`ini_get`/`file_get_contents`.
     (d) „líné PDO“ v plánech neplatí – kontejner ho vytvoří už při sestavení příkazu.
 
+16. **Rate limit AI tras (revize plánu 013, 2026-10-09)** – implementace čistá (mapování podle handleru z RouteMatch, za CSRF
+    a AdminAccess, HEAD/jiné metody = 405, `%30%39` → AiController::run → 404, ale počítá se; SQL parametrizované, bucket z enumu,
+    429 jen čísla + e(), JSON přes textContent, MissingConfiguration jen jméno proměnné). Opakovaně slabé: (a) **limit počtu startů ≠ limit
+    souběhu** – php-fpm `pm.max_children = 5`, povolené 3× 09 (50–110 s) + 06/07 obsadí všechny workery → veřejný web nedostupný;
+    (b) **fail-open výchozí stav** (handler mimo mapu = bez limitu) jištěný jen textovým grep testem routes.php (jen `'…'` uvozovky,
+    jen prefix `/admin/ai`); (c) **audit bez agregace** = neomezené řádky audit_log od přihlášeného (zakrytí stop); (d) neatomické
+    COUNT+INSERT (přijato). Ověřeno: `mb_substr` nahrazuje neplatné UTF-8 `?` (AuditEntry nespadne na utf8mb4). Kontrolovat u
+    budoucího limitu přihlášení (M9) totéž: souběh, fail-closed default, agregace auditu.
+    T5 (druhý průchod) navíc: shrnutí auditu skládá **surovou cestu z REQUEST_URI** (u `{example}` libovolné UTF-8 → zavádějící
+    text v auditu; lepší vzor trasy + ověřené id); časy v Europe/Prague = na **jaře** okno krátce fail-open (R5 řeší jen podzim).
+    Router nedekóduje cestu, `{example}` ano (rawurldecode) – u každé nové trasy s parametrem ověřit, kam dekódovaná hodnota vede.
+
 **Why:** tým navrhuje pojistky jako prefix/regex filtry a výčty jmen souborů a přehlíží nepřímé cesty
 (expanze v make, alternativní názvy souborů, zápis z kontejneru, skill oprávnění).
 **How to apply:** u každé změny settings/hooků/Makefile/compose projít cesty „agent → host“

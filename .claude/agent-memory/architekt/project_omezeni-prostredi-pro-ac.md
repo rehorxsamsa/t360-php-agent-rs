@@ -38,6 +38,12 @@ metadata:
 - **Kolace `utf8mb4_czech_ci` + PAD SPACE**: `WHERE slug = ?` ignoruje velikost písmen a koncové mezery →
   slug z URL validovat regexem před dotazem.
 
+- **Middleware se sestavují pro KAŽDÝ požadavek** (i `/`, `/zdravi`) → jejich závislosti (repozitáře, parsování env) jsou eager;
+  nový repozitář v middleware musí `TestContainer::create()`/`withoutSession()` nahradit VŽDY, ne jen v `replaceAiDependencies`.
+  Neplatný env middleware = 500 i na veřejném webu (plán 013, R6).
+- **Omezení pokusů o přihlášení neexistuje** (k 2026-10-09; jen audit `auth.login_failed` s IP) – nepsat do plánů „po vzoru přihlášení“.
+- **`REMOTE_ADDR` v Docker dev** je obvykle brána sítě, `TRUSTED_PROXIES` neimplementováno → IP není použitelný klíč limitu.
+
 **Why:** zjištěno při plánech 003 a 004 (M3/M4, 2026-10-03); bez toho tým navrhne AC, které nejde ověřit.
 
 **How to apply:** při plánech s HTTP/session/E2E navrhuj AC v mezích hooku a Playwrightu; ověř

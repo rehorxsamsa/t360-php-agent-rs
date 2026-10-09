@@ -36,4 +36,10 @@ Plán 012 (2026-10-09, T1 před T2): RED čistě v pracovním stromu. Testy pře
 /admin/ai) zezelenají hned po změně fixtury – RED nesou jen katalog/AiConfig/MAX_TOKENS. Test-hlídač „ID se v repu
 nevyskytuje“ nesmí mít hledaný řetězec doslova (skládat `'a' . 'b'`), jinak najde sám sebe; README/DEMO (práce
 spisovatele až po T2) do PHPUnit hlídače nedávat, jinak T2 nemá zelené `make qa`.
+Plán 013 (2026-10-09, T1 ∥ T2): databazista měl VO/repozitář/migraci hotové dřív → RateLimitTest, SchemaTest a PDO test
+zelené hned. Osvědčilo se: **hozený prototyp implementace v kopii stromu** (scratchpad, `tar --exclude=.git`) → ověří, že
+testy jdou splnit, najde regrese existujících testů (zde žádné nad výchozími limity) a umožní phpstan nad testy bez stubů.
+`docker run --network t360_default --env-file …` (DB_* z `docker compose exec app env`, druhý soubor má přednost) → zmizí
+i artefakt KernelTest. Data provider, který čte konstantu neexistující třídy, nedá RED, ale varování „No tests found“ →
+konstantu číst až v těle testu (`constant(X::class . '::NAME')`).
 Viz [[hook-curl-zavinac]].
