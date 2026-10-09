@@ -1,3 +1,4 @@
 - [Pasti prostředí (hook, cs-fixer)](feedback_prostredi-hook-a-cs-fixer.md) — Write místo heredocu, php skript přes stdin, nowdoc odsazení
 - [M7 streaming a tool use](project_m7-streaming-tooluse.md) — fallback StreamingLlmClient, zakázané literály, odchylka AC 11
 - [M7b RAG příklad 08](project_m7b-rag-priklad-08.md) — rozhodnutí mimo AC, ověřená fakta Ollama/search_result, AC 35 nehotové
+- [M7c AI redaktor příklad 09](project_m7c-priklad-09.md) — štítky výsledku, zakázané řetězce v Editor/, živé ověření chybí

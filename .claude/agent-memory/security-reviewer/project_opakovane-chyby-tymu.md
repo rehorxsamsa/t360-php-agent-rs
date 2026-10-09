@@ -52,6 +52,13 @@ Nalezeno při revizi M1 (plán 001, kola 1–3, 2026-10-03). Při další revizi
     (setup_revisions), u add/commit/restore (parse-options) zkratky bere. `docker compose` v2.40 odmítá
     `-f/--file/--env-file` za podpříkazem. `jq import` nečte absolutní cesty ani `../`. Mount app je `.:/app:ro`.
 
+14. **AI funkce (revize plánu 010 / příklad 09, 2026-10-09)** – LLM06/CSRF/XSS/mass assignment tým dělá dobře
+    (pole čtená výčtem, stav vynucený v use-case, vše přes e()). Opakovaně slabé: (a) **žádný rate limit AI tras**
+    (jen globální denní limit tokenů → jeden admin vyčerpá AI všem), (b) **dlouhé synchronní workflow** –
+    časový rozpočet se kontroluje jen mezi některými kroky, curl timeout 90 s × až 8 volání ≫ nginx 120 s,
+    session zamčená celou dobu (release() jen v 06), (c) `PromptData::neutralize` jde obejít `<`+U+200B
+    (\p{Cf}), plnošířkovým `＜` U+FF1C a `&lt;` – ověřeno v kontejneru. Kontrolovat u každého nového příkladu.
+
 **Why:** tým navrhuje pojistky jako prefix/regex filtry a výčty jmen souborů a přehlíží nepřímé cesty
 (expanze v make, alternativní názvy souborů, zápis z kontejneru, skill oprávnění).
 **How to apply:** u každé změny settings/hooků/Makefile/compose projít cesty „agent → host“

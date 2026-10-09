@@ -1,5 +1,6 @@
 - [Výukový režim](project_vyukovy-rezim.md) — od 2026-10-03 MVP plány, bez security review, u otázek vždy doporučení
-- [DB názvy, migrace, seed, časy](project_db-nazvy-a-migrace.md) — ADR-0004 anglicky, číslování (007 = M8, 008 = M7, 009 = M7b), ADR-0007 UTC vs Praha
-- [Fakta Claude API](project_ai-api-fakta.md) — modely/ceny 2026-10-04, zákazy Sonnet 5.5, streaming usage kumulativně, thinking bloky vracet
+- [DB názvy, migrace, seed, časy](project_db-nazvy-a-migrace.md) — ADR-0004 anglicky, číslování (007 = M8, 008 = M7, 009 = M7b, 010 = M7c/09), ADR-0007 UTC vs Praha
+- [Fakta Claude API](project_ai-api-fakta.md) — modely/ceny 2026-10-08 (cache Sonnet 0,10, Haiku 5.5), zákazy Sonnet 5.5, streaming, thinking bloky
 - [Fakta RAG a embeddingů](project_rag-embeddingy-fakta.md) — 2026-10-08: VECTOR post-filtr, Ollama embeddinggemma 768, Voyage ≠ 768, search_result citace
 - [Omezení prostředí pro AC](project_omezeni-prostredi-pro-ac.md) — curl hook, Playwright reálně na localhost, 422 bez textu, .env v app není
+- [Zápis výstupu AI a LLM06](project_ai-zapis-llm06.md) — ADR-0010: workflow bez nástrojů, návrh v session, zápis jen POST admina, AgentLoop ne

@@ -17,6 +17,9 @@ Ověřeno 2026-10-03 (plán 006, ADR-0006) a znovu 2026-10-04 (plán 008, ADR-00
 - **Tool use:** bloky `thinking` (se `signature`) se v tool use smyčce **musí vrátit nezměněné**, jinak 400 → `LlmResponse` nese
   surové bloky. PHP past: `json_decode(…, true)` udělá z `"input":{}` pole a `json_encode` z něj `[]` → 400.
   `tool_result` bloky první v `user` zprávě, všechny paralelní v jedné.
+- **2026-10-08 (plán 010):** Sonnet 5.5 čtení z cache nově **0,10** USD/MTok (katalog `config/ai-models.php` měl 0,20 — otázka 10
+  plánu 010), vyřazení Sonnet 5.5 ≥ 28. 9. 2027; nový `claude-haiku-5-5` (0,10/0,50, effort ano, výchozí medium, ≥ 7. 10. 2027) =
+  nástupce Haiku 4.5 (03, 05). Haiku 4.5 je „legacy“. Nový tokenizer (od 4.7) dává ~30 % víc tokenů — odhady délky v tokenech nadsadit.
 - Skill `ai-integrace` je od commitu po plánu 008 v souladu s ADR-0008; embeddingy v něm (`nomic-embed-text`) zastaraly —
   plán 009 otázka 9 navrhuje `embeddinggemma` + ADR-0009 (ověř, zda proběhlo).
 

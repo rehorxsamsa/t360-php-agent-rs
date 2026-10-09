@@ -35,6 +35,11 @@ Destruction“) → rollback ověřovat jen integračním `SchemaTest` (redakce_
 neodhalí chování nad seedem (14 článků) → deterministické „negativní“ dotazy vždy ověřit i nad skutečným seedem.
 Při hledání úniků v textu výsledku vyloučit ozvěnu otázky (pole „Otázka“ v bloku Výsledek).
 
+Režim B M7c (2026-10-09): `make up` skončil chybou mountu `nginx.conf` („not a directory“, zastaralý bind-mount Docker
+Desktop) → pomohlo `docker compose rm -sf web && docker compose up -d web`. Serverovou validaci formuláře s `required`
+(např. rubrika) v Playwrightu ověřovat přes `form.noValidate = true`, jinak `waitForNavigation` vyprší. „Zpět“ po PRG
+nevede na formulář → opakované odeslání simulovat vytvořeným formulářem s CSRF z aktuální stránky.
+
 **Why:** hook chrání před `curl -d @soubor` (exfiltrace souborů); kontroluje text příkazu, ne sémantiku.
 **How to apply:** úpravy `tests/E2E-scenare.md` dělat nástrojem Edit/Write, ne přes Bash; v curl příkladech psát
 zavináč jako `%40`, URL bez uvozovek. V režimu A s paralelním programátorem nespouštět integrační testy

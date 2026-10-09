@@ -17,7 +17,8 @@ metadata:
   hledání = M4b), 005 = M5 (administrace článků, zúžená; CRUD rubrik/štítků = M5b), 006 = M6 (AI jádro,
   tabulka `ai_calls`, migrace `202610030007`), **007 = M8** (audit log, opravy, tutoriál; M7 přeskočen v pořadí);
   **008 = M7 zúžený** (příklady 06–07, bez migrace), **009 = M7b** (příklad 08 RAG, migrace `202610080001` `article_embeddings`,
-  ADR-0009), 09+10 = M7c, CI = další volné číslo (ověř v STAV.md). Migrační heslo v `app` je od M2.
+  ADR-0009), **010 = M7c zúžený** (jen příklad 09, ADR-0010, bez migrace), příklad 10 MCP = M7d (011?), CI = další volné číslo
+  (ověř v STAV.md). Nová akce auditu nepotřebuje migraci (`audit_log.action VARCHAR(50)`). Migrační heslo v `app` je od M2.
 - Seed (M4 návrh): `database/seeds/demo_content.php` vrací objekt `Infrastructure\Seed\Seed`, příkaz
   `db:seed` (otázka 3 plánu 004), běží jako `redakce_app`, jen doplňuje podle slugu, nic nemaže.
 - Časy: PHP `Europe/Prague`, MariaDB v UTC → v SQL nepoužívat `NOW()` pro `published_at`, čas přes `Clock`.

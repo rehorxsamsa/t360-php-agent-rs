@@ -23,4 +23,9 @@ M7b (plán 009, 2026-10-08): T2–T5 (vč. kontroleru) byly hotové dřív než 
 RED jen v kopii HEAD. V kopii HEAD (`docker run` bez env) padá i `KernelTest` (14×, „Chybí DB_HOST“) – artefakt prostředí,
 ne RED. Integrační testy kolidují s jiným agentem, který zrovna pouští phpunit (`Table 'users' already exists`) → počkat,
 až `ps aux | grep phpunit` nic neukáže, a pustit znovu. `StatementCounter::statements()` sčítá i `Com_*_multi`.
+M7c (plán 010, 2026-10-09): T2+T3 hotové během psaní T1 → vše kromě T4 (AiDraftStash, controller, trasy, šablona)
+zelené hned; RED v kopii HEAD doložen (chybí třídy Editor/Example09/SaveAiDraft, PromptData::block, akce auditu).
+PHPStan `level: max` běží i nad `tests/` → u dat z `json_decode`/fixtur s `mixed` používat pomocníky s `assertIsArray`/
+`assertIsString` (např. `at()`, `stringAt()`, `merged()`), ne přímé `$a['x']['y']`; closure v data provideru nemá phpdoc typ.
+Záměrné regrese mimo výčet plánu: `AdminAuditLogTest` (počet voleb filtru akcí je natvrdo) – hledat `assertCount(` u výčtů.
 Viz [[hook-curl-zavinac]].
